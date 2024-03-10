@@ -198,6 +198,7 @@ set(STARPU_SRC
     "starpu/adam_step.cc"
     "starpu/adamw_step.cc"
     "starpu/transpose.cc"
+    "starpu/conv2d.cc"
     )
 
 set(TILE_SRC

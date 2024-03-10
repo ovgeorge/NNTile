@@ -41,6 +41,27 @@ void cpu(void *buffers[], void *cl_args)
             kernel, dst);
 }
 
+#ifdef NNTILE_USE_CUDA
+//! StarPU wrapper for kernel::conv2d::cuda<T>
+template<typename T>
+void cuda(void *buffers[], void *cl_args)
+    noexcept
+{
+    // Get arguments
+    auto args = reinterpret_cast<args_t *>(cl_args);
+    // Get interfaces
+    auto interfaces = reinterpret_cast<VariableInterface **>(buffers);
+    const T *src = interfaces[0]->get_ptr<T>();
+    const T *kernel = interfaces[1]->get_ptr<T>();
+    T *dst = interfaces[2]->get_ptr<T>();
+    // Get CUDA stream
+    cudaStream_t stream = starpu_cuda_get_local_stream();
+    // Launch kernel
+    kernel::conv2d::cuda<T>(stream, args->nx, args->ny, src, args->mx, args->my,
+            kernel, dst);
+}
+#endif // NNTILE_USE_CUDA
+
 //! Footprint for conv2d tasks
 template<typename T>
 static
@@ -64,12 +85,20 @@ void init()
     codelet_fp32.init("nntile_conv2d_fp32",
             footprint<fp32_t>,
             {cpu<fp32_t>},
+#ifdef NNTILE_USE_CUDA
+            {cuda<fp32_t>}
+#else // NNTILE_USE_CUDA
             {}
+#endif // NNTILE_USE_CUDA
             );
     codelet_fp64.init("nntile_conv2d_fp64",
             footprint<fp64_t>,
             {cpu<fp64_t>},
+#ifdef NNTILE_USE_CUDA
+            {cuda<fp64_t>}
+#else // NNTILE_USE_CUDA
             {}
+#endif // NNTILE_USE_CUDA
             );
 }
 

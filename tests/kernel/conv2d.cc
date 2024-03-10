@@ -22,6 +22,51 @@
 using namespace nntile;
 using namespace nntile::kernel::conv2d;
 
+#ifdef NNTILE_USE_CUDA
+template<typename T>
+void run_cuda(Index nx, Index ny, const std::vector<T> &src,
+        Index mx, Index my, const std::vector<T> &kernel, std::vector<T> &dst)
+{
+    // Copy to device
+    T *dev_src, *dev_kernel, *dev_dst;
+    cudaError_t cuda_err = cudaMalloc(&dev_src, sizeof(T)*nx*ny);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    cuda_err = cudaMalloc(&dev_kernel, sizeof(T)*mx*my);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    cuda_err = cudaMalloc(&dev_dst, sizeof(T)*(nx+mx-1)*(ny+my-1));
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    cuda_err = cudaMemcpy(dev_src, &src[0], sizeof(T)*nx*ny,
+            cudaMemcpyHostToDevice);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    cuda_err = cudaMemcpy(dev_kernel, &kernel[0], sizeof(T)*mx*my,
+            cudaMemcpyHostToDevice);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    cuda_err = cudaMemcpy(dev_dst, &dst[0], sizeof(T)*(nx+mx-1)*(ny+my-1),
+            cudaMemcpyHostToDevice);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    // Init stream
+    cudaStream_t stream;
+    cuda_err = cudaStreamCreate(&stream);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    // Launch low-level CUDA kernel
+    cuda<T>(stream, nx, ny, dev_src, mx, my, dev_kernel, dev_dst);
+    cuda_err = cudaStreamSynchronize(stream);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    // Copy result and deallocate device memory
+    cuda_err = cudaMemcpy(&dst[0], dev_dst, sizeof(T)*(nx+mx-1)*(ny+my-1),
+            cudaMemcpyDeviceToHost);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    cuda_err = cudaFree(dev_src);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    cuda_err = cudaFree(dev_kernel);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    cuda_err = cudaFree(dev_dst);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+    cuda_err = cudaStreamDestroy(stream);
+    TEST_ASSERT(cuda_err == cudaSuccess);
+}
+#endif // NNTILE_USE_CUDA
+
 // Templated validation
 template<typename T>
 void validate(Index nx, Index ny, Index px, Index py, Index mx, Index my, Index qx, Index qy)

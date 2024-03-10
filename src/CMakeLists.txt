@@ -128,6 +128,7 @@ if(NNTILE_USE_CUDA)
         "kernel/adam_step/cuda.cu"
         "kernel/adamw_step/cuda.cu"
         "kernel/transpose/cuda.cu"
+        "kernel/conv2d/cuda.cu"
         )
 endif()
 

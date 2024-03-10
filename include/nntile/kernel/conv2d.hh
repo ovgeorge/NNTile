@@ -16,6 +16,9 @@
 
 #include <nntile/kernel/conv2d/cpu.hh>
 #include <nntile/defs.h>
+#ifdef NNTILE_USE_CUDA
+#include <nntile/kernel/conv2d/cuda.hh>
+#endif // NNTILE_USE_CUDA
 
 namespace nntile
 {

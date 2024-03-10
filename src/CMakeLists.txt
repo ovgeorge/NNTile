@@ -68,6 +68,7 @@ set(KERNEL_SRC
     "kernel/adam_step/cpu.cc"
     "kernel/adamw_step/cpu.cc"
     "kernel/transpose/cpu.cc"
+    "kernel/conv2d/cpu.cc"
     )
 
 if(NNTILE_USE_CUDA)

@@ -739,6 +739,11 @@ void def_mod_tensor(py::module_ &m)
     m.def("transpose_async_fp32", &transpose_async<fp32_t>);
     m.def("transpose_fp64", &transpose<fp64_t>);
     m.def("transpose_fp32", &transpose<fp32_t>);
+
+    m.def("conv2d_async_fp64", &transpose_async<fp64_t>);
+    m.def("conv2d_async_fp32", &transpose_async<fp32_t>);
+    m.def("conv2d_fp64", &transpose<fp64_t>);
+    m.def("conv2d_fp32", &transpose<fp32_t>);
 }
 
 // Main extension module with all wrappers

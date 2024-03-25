@@ -260,6 +260,7 @@ set(STARPU_HDR
     "nntile/starpu/adamw_step.hh"
     "nntile/starpu/transpose.hh"
     "nntile/starpu/conv2d.hh"
+    "nntile/starpu/strassen.hh"
     )
 
 set(TILE_HDR
@@ -393,6 +394,7 @@ set(TENSOR_HDR
     "nntile/tensor/adamw_step.hh"
     "nntile/tensor/transpose.hh"
     "nntile/tensor/conv2d.hh"
+    "nntile/tensor/strassen.hh"
     )
 
 set(LAYER_HDR

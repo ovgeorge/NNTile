@@ -122,6 +122,10 @@ configure_file("${PROJECT_SOURCE_DIR}/tests/starpu/axpy.cc.in"
 configure_file("${PROJECT_SOURCE_DIR}/src/starpu/gemm.cc.in"
     "${PROJECT_BINARY_DIR}/src/starpu/gemm.cc" @ONLY)
 
+# Configure src/starpu/strassen.cc that relies on cblas
+configure_file("${PROJECT_SOURCE_DIR}/src/starpu/strassen.cc.in"
+    "${PROJECT_BINARY_DIR}/src/starpu/strassen.cc" @ONLY)
+
 # Configure tests/starpu/gemm.cc that relies on cblas
 configure_file("${PROJECT_SOURCE_DIR}/tests/starpu/gemm.cc.in"
     "${PROJECT_BINARY_DIR}/tests/starpu/gemm.cc" @ONLY)

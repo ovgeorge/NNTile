@@ -87,6 +87,7 @@
 #include <nntile/tensor/adamw_step.hh>
 #include <nntile/tensor/transpose.hh>
 #include <nntile/tensor/conv2d.hh>
+#include <nntile/tensor/strassen.hh>
 
 namespace nntile
 {

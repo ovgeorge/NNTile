@@ -149,6 +149,7 @@ set(STARPU_SRC
     "starpu/drelu.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/starpu/axpy.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/starpu/gemm.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/starpu/strassen.cc"
     "starpu/gemm_ex.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/starpu/nrm2.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/starpu/scal_inplace.cc"
@@ -200,6 +201,7 @@ set(STARPU_SRC
     "starpu/adamw_step.cc"
     "starpu/transpose.cc"
     "starpu/conv2d.cc"
+    #"starpu/strassen.cc"
     )
 
 set(TILE_SRC
@@ -329,6 +331,7 @@ set(TENSOR_SRC
     "tensor/adamw_step.cc"
     "tensor/transpose.cc"
 	"tensor/conv2d.cc"
+	"tensor/strassen.cc"
     )
 
 set(LAYER_SRC

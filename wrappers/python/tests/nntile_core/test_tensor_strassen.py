@@ -31,22 +31,26 @@ strassen = {
 
 
 # Helper function returns bool value true if test passes
-def helper(dtype):
+def helper(dtype, tA, tB, matrix_shape, shared_size, batch=3):
     # Describe single-tile tensor, located at node 0
-    matrix_shape = [6, 4]
-    batch = 3
     mpi_distr = [0]
     next_tag = 0
     alpha = 1
     beta = 0
 
-    shape = [matrix_shape[0], 10, batch]
+    if tA == nntile.notrans:
+        shape = [matrix_shape[0], shared_size, batch]
+    else:
+        shape = [shared_size, matrix_shape[0], batch]
     traits = nntile.tensor.TensorTraits(shape, shape)
     A = Tensor[dtype](traits, mpi_distr, next_tag)
     src_A = np.array(np.random.randn(*shape), dtype=dtype, order="F")
     next_tag = A.next_tag
 
-    shape = [10, matrix_shape[1], batch]
+    if tB == nntile.notrans:
+        shape = [shared_size, matrix_shape[1], batch]
+    else:
+        shape = [matrix_shape[1], shared_size, batch]
     traits = nntile.tensor.TensorTraits(shape, shape)
     B = Tensor[dtype](traits, mpi_distr, next_tag)
     src_B = np.array(np.random.randn(*shape), dtype=dtype, order="F")
@@ -64,7 +68,7 @@ def helper(dtype):
     C.from_array(src_C)
 
     C.to_array(dst_C)
-    strassen[dtype](alpha, nntile.notrans, A, nntile.notrans, B, beta, C, 1, 1, 0)
+    strassen[dtype](alpha, tA, A, tB, B, beta, C, 1, 1, 0)
     C.to_array(dst_C)
 
     nntile.starpu.wait_for_all()
@@ -75,9 +79,9 @@ def helper(dtype):
     # Check results
     for i in range(batch):
         # Get result in numpy
-        src_C[:, :, i] = beta * src_C[:, :, i] + alpha * (
-            src_A[:, :, i] @ (src_B[:, :, i])
-        )
+        termA = src_A[:, :, i] if tA == nntile.notrans else src_A[:, :, i].T
+        termB = src_B[:, :, i] if tB == nntile.notrans else src_B[:, :, i].T
+        src_C[:, :, i] = beta * src_C[:, :, i] + alpha * (termA @ termB)
         # Check if results are almost equal
         if (
             np.linalg.norm(dst_C[:, :, i] - src_C[:, :, i])
@@ -88,18 +92,15 @@ def helper(dtype):
     return True
 
 
-# Test runner for different precisions
-def test():
-    for dtype in dtypes:
-        assert helper(dtype)
-
-
-# Repeat tests
+# Repeat tests for different configurations
 def test_repeat():
     for dtype in dtypes:
-        assert helper(dtype)
+        for transA in [nntile.notrans, nntile.trans]:
+            for transB in [nntile.notrans, nntile.trans]:
+                for matrix_size in [[4, 4], [6, 4], [4, 6]]:
+                    for shared_size in [10, 2, 4, 6]:
+                        assert helper(dtype, transA, transB, matrix_size, shared_size)
 
 
 if __name__ == "__main__":
-    test()
-    test_repeat()
+    tests()

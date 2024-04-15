@@ -14,6 +14,7 @@
 # All necesary imports
 import nntile
 import numpy as np
+import itertools
 
 # Set up StarPU configuration and init it
 config = nntile.starpu.Config(1, 0, 0)
@@ -31,12 +32,10 @@ strassen = {
 
 
 # Helper function returns bool value true if test passes
-def helper(dtype, tA, tB, matrix_shape, shared_size, batch=3):
+def helper(dtype, tA, tB, matrix_shape, shared_size, alpha, beta, batch=3):
     # Describe single-tile tensor, located at node 0
     mpi_distr = [0]
     next_tag = 0
-    alpha = 1
-    beta = 0
 
     if tA == nntile.notrans:
         shape = [matrix_shape[0], shared_size, batch]
@@ -93,13 +92,16 @@ def helper(dtype, tA, tB, matrix_shape, shared_size, batch=3):
 
 
 # Repeat tests for different configurations
-def test_repeat():
-    for dtype in dtypes:
-        for transA in [nntile.notrans, nntile.trans]:
-            for transB in [nntile.notrans, nntile.trans]:
-                for matrix_size in [[4, 4], [6, 4], [4, 6]]:
-                    for shared_size in [10, 2, 4, 6]:
-                        assert helper(dtype, transA, transB, matrix_size, shared_size)
+def tests():
+    trans = [nntile.notrans, nntile.trans]
+    matrix_sizes = [[4, 4], [6, 4], [4, 6], [5, 4], [4, 5], [3, 7], [7, 3], [7, 7]]
+    shared_sizes = range(1, 11)
+    ab = [-0.5, -0.33, 0, 0.33, 0.5]
+    args_sets = itertools.product(
+        dtypes, trans, trans, matrix_sizes, shared_sizes, ab, ab
+    )
+    for args in args_sets:
+        assert helper(*args)
 
 
 if __name__ == "__main__":

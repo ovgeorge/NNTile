@@ -128,6 +128,7 @@ set(KERNEL_HDR
     "nntile/kernel/transpose/cpu.hh"
     "nntile/kernel/conv2d.hh"
     "nntile/kernel/conv2d/cpu.hh"
+    "nntile/kernel/strassen/cpu.hh"
     )
 
 if(NNTILE_USE_CUDA)

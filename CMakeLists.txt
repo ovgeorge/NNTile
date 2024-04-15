@@ -122,10 +122,6 @@ configure_file("${PROJECT_SOURCE_DIR}/tests/starpu/axpy.cc.in"
 configure_file("${PROJECT_SOURCE_DIR}/src/starpu/gemm.cc.in"
     "${PROJECT_BINARY_DIR}/src/starpu/gemm.cc" @ONLY)
 
-# Configure src/starpu/strassen.cc that relies on cblas
-configure_file("${PROJECT_SOURCE_DIR}/src/starpu/strassen.cc.in"
-    "${PROJECT_BINARY_DIR}/src/starpu/strassen.cc" @ONLY)
-
 # Configure tests/starpu/gemm.cc that relies on cblas
 configure_file("${PROJECT_SOURCE_DIR}/tests/starpu/gemm.cc.in"
     "${PROJECT_BINARY_DIR}/tests/starpu/gemm.cc" @ONLY)
@@ -161,6 +157,14 @@ configure_file("${PROJECT_SOURCE_DIR}/src/starpu/scal_inplace.cc.in"
 # Configure tests/starpu/scal_inplace.cc that relies on cblas
 configure_file("${PROJECT_SOURCE_DIR}/tests/starpu/scal_inplace.cc.in"
     "${PROJECT_BINARY_DIR}/tests/starpu/scal_inplace.cc" @ONLY)
+
+# Configure src/kernel/strassen/cpu.cc that relies on cblas
+configure_file("${PROJECT_SOURCE_DIR}/src/kernel/strassen/cpu.cc.in"
+    "${PROJECT_BINARY_DIR}/src/kernel/strassen/cpu.cc" @ONLY)
+
+# Configure src/starpu/strassen.cc that relies on cblas
+configure_file("${PROJECT_SOURCE_DIR}/src/starpu/strassen.cc.in"
+    "${PROJECT_BINARY_DIR}/src/starpu/strassen.cc" @ONLY)
 
 # Check if code coverage report is needed
 if(BUILD_COVERAGE)

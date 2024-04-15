@@ -1,0 +1,298 @@
+/*! @copyright (c) 2022-2023 Skolkovo Institute of Science and Technology
+ *                           (Skoltech). All rights reserved.
+ *
+ * NNTile is software framework for fast training of big neural networks on
+ * distributed-memory heterogeneous systems based on StarPU runtime system.
+ *
+ * @file src/kernel/strassen/cpu.cc
+ * Strassen multiplication operation on CPU
+ *
+ * @version 1.0.0
+ * @author Aleksandr Mikhalev
+ * @date 2023-11-06
+ * */
+
+
+#include <nntile/base_types.hh>
+#include <nntile/starpu/config.hh>
+#include <nntile/defs.h>
+#include "nntile/kernel/strassen/cpu.hh"
+#include <cmath>
+
+#ifdef NNTILE_USE_CBLAS
+#include <@CBLAS_H_NAME@>
+#ifndef CBLAS_INT
+#define CBLAS_INT @CBLAS_INT_TYPE@
+#endif // CBLAS_INT
+#endif // NNTILE_USE_CBLAS
+
+namespace nntile
+{
+namespace kernel
+{
+namespace strassen
+{
+
+//#ifdef NNTILE_USE_CBLAS
+//#include <nntile/starpu/transpose.hh>
+
+template <typename T>
+void cblas(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB, CBLAS_INT M,
+           CBLAS_INT N, CBLAS_INT K, T alpha, const T *A, CBLAS_INT ldA,
+           const T *B, CBLAS_INT ldB, T beta, T *C, CBLAS_INT ldC) noexcept;
+
+template <>
+void cblas<fp64_t>(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB, CBLAS_INT M,
+                   CBLAS_INT N, CBLAS_INT K, fp64_t alpha, const fp64_t *A,
+                   CBLAS_INT ldA, const fp64_t *B, CBLAS_INT ldB, fp64_t beta,
+                   fp64_t *C, CBLAS_INT ldC) noexcept
+{
+    cblas_dgemm(CblasColMajor, transA, transB, M, N, K, alpha, A, ldA, B, ldB,
+                beta, C, ldC);
+}
+
+template <>
+void cblas<fp32_t>(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB, CBLAS_INT M,
+                   CBLAS_INT N, CBLAS_INT K, fp32_t alpha, const fp32_t *A,
+                   CBLAS_INT ldA, const fp32_t *B, CBLAS_INT ldB, fp32_t beta,
+                   fp32_t *C, CBLAS_INT ldC) noexcept
+{
+    cblas_sgemm(CblasColMajor, transA, transB, M, N, K, alpha, A, ldA, B, ldB,
+                beta, C, ldC);
+}
+
+template <typename T, int Ij, int iJ>
+inline T *getQuarter(const T *A, T *quarter, CBLAS_INT _M, CBLAS_INT _K,
+                     CBLAS_INT ld, CBLAS_TRANSPOSE transA)
+{
+    CBLAS_INT M = _M + (_M % 2);
+    CBLAS_INT K = _K + (_K % 2);
+
+    for(int i = 0; i < M / 2; i++)
+    {
+        for(int j = 0; j < K / 2; j++)
+        {
+            T res;
+            if(i == _M / 2 && _M & 0x1 && Ij == 2 ||
+               j == _K / 2 && _K & 0x1 && iJ == 2)
+                res = 0;
+            else if(transA == CblasNoTrans)
+                res = A[(i + M / 2 * (Ij - 1)) + (j + K / 2 * (iJ - 1)) * ld];
+            else
+                res = A[(i + M / 2 * (Ij - 1)) * ld + (j + K / 2 * (iJ - 1))];
+            quarter[i + j * M / 2] = res;
+        }
+    }
+    return quarter;
+}
+
+template <typename T, int Ij1, int iJ1, int Ij2, int iJ2>
+inline T *getQuarterSum(const T *A, T *quarter, CBLAS_INT _M, CBLAS_INT _K,
+                        CBLAS_INT ld, CBLAS_TRANSPOSE transA)
+{
+    CBLAS_INT M = _M + (_M % 2);
+    CBLAS_INT K = _K + (_K % 2);
+
+    for(int i = 0; i < M / 2; i++)
+        for(int j = 0; j < K / 2; j++)
+        {
+            T v1, v2;
+
+            if(i == _M / 2 && _M & 0x1 && Ij1 == 2 ||
+               j == _K / 2 && _K & 0x1 && iJ1 == 2)
+                v1 = 0;
+            else if(transA == CblasNoTrans)
+                v1 = A[(i + M / 2 * (Ij1 - 1)) + (j + K / 2 * (iJ1 - 1)) * ld];
+            else
+                v1 = A[(i + M / 2 * (Ij1 - 1)) * ld + (j + K / 2 * (iJ1 - 1))];
+
+            if(i == _M / 2 && _M & 0x1 && Ij2 == 2 ||
+               j == _K / 2 && _K & 0x1 && iJ2 == 2)
+                v2 = 0;
+            else if(transA == CblasNoTrans)
+                v2 = A[(i + M / 2 * (Ij2 - 1)) + (j + K / 2 * (iJ2 - 1)) * ld];
+            else
+                v2 = A[(i + M / 2 * (Ij2 - 1)) * ld + (j + K / 2 * (iJ2 - 1))];
+
+            quarter[i + j * M / 2] = v1 + v2;
+        }
+    return quarter;
+}
+
+template <typename T, int Ij1, int iJ1, int Ij2, int iJ2>
+inline T *getQuarterSub(const T *A, T *quarter, CBLAS_INT _M, CBLAS_INT _K,
+                        CBLAS_INT ld, CBLAS_TRANSPOSE transA)
+{
+    CBLAS_INT M = _M + (_M % 2);
+    CBLAS_INT K = _K + (_K % 2);
+
+    for(int i = 0; i < M / 2; i++)
+        for(int j = 0; j < K / 2; j++)
+        {
+            T v1, v2;
+
+            if(i == _M / 2 && _M & 0x1 && Ij1 == 2 ||
+               j == _K / 2 && _K & 0x1 && iJ1 == 2)
+                v1 = 0;
+            else if(transA == CblasNoTrans)
+                v1 = A[(i + M / 2 * (Ij1 - 1)) + (j + K / 2 * (iJ1 - 1)) * ld];
+            else
+                v1 = A[(i + M / 2 * (Ij1 - 1)) * ld + (j + K / 2 * (iJ1 - 1))];
+
+            if(i == _M / 2 && _M & 0x1 && Ij2 == 2 ||
+               j == _K / 2 && _K & 0x1 && iJ2 == 2)
+                v2 = 0;
+            else if(transA == CblasNoTrans)
+                v2 = A[(i + M / 2 * (Ij2 - 1)) + (j + K / 2 * (iJ2 - 1)) * ld];
+            else
+                v2 = A[(i + M / 2 * (Ij2 - 1)) * ld + (j + K / 2 * (iJ2 - 1))];
+
+            quarter[i + j * M / 2] = v1 - v2;
+        }
+    return quarter;
+}
+template <typename T>
+inline void strassen_blas(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB,
+                          CBLAS_INT M, CBLAS_INT N, CBLAS_INT K, T alpha,
+                          const T *A, CBLAS_INT ldA, const T *B, CBLAS_INT ldB,
+                          T beta, T *C, CBLAS_INT ldC) noexcept
+{
+    T *Aarr = new T[(M + 1) / 2 * (K + 1) / 2];
+    T *Barr = new T[(N + 1) / 2 * (K + 1) / 2];
+    T *Marr[8];
+    T zero = 0, one = 1;
+    for(int i = 1; i <= 7; i++)
+        Marr[i] = new T[(N + 1) / 2 * (M + 1) / 2];
+
+    getQuarterSum<T, 1, 1, 2, 2>(A, Aarr, M, K, ldA, transA);
+    getQuarterSum<T, 1, 1, 2, 2>(B, Barr, K, N, ldB, transB);
+    cblas(CblasNoTrans, CblasNoTrans, (M + 1) / 2, (N + 1) / 2, (K + 1) / 2,
+          one, Aarr, (M + 1) / 2, Barr, (K + 1) / 2, zero, Marr[1],
+          (M + 1) / 2);
+
+    getQuarterSum<T, 2, 1, 2, 2>(A, Aarr, M, K, ldA, transA);
+    getQuarter<T, 1, 1>(B, Barr, K, N, ldB, transB);
+    cblas(CblasNoTrans, CblasNoTrans, (M + 1) / 2, (N + 1) / 2, (K + 1) / 2,
+          one, Aarr, (M + 1) / 2, Barr, (K + 1) / 2, zero, Marr[2],
+          (M + 1) / 2);
+
+    getQuarter<T, 1, 1>(A, Aarr, M, K, ldA, transA);
+    getQuarterSub<T, 1, 2, 2, 2>(B, Barr, K, N, ldB, transB);
+    cblas(CblasNoTrans, CblasNoTrans, (M + 1) / 2, (N + 1) / 2, (K + 1) / 2,
+          one, Aarr, (M + 1) / 2, Barr, (K + 1) / 2, zero, Marr[3],
+          (M + 1) / 2);
+
+    getQuarter<T, 2, 2>(A, Aarr, M, K, ldA, transA);
+    getQuarterSub<T, 2, 1, 1, 1>(B, Barr, K, N, ldB, transB);
+    cblas(CblasNoTrans, CblasNoTrans, (M + 1) / 2, (N + 1) / 2, (K + 1) / 2,
+          one, Aarr, (M + 1) / 2, Barr, (K + 1) / 2, zero, Marr[4],
+          (M + 1) / 2);
+
+    getQuarterSum<T, 1, 1, 1, 2>(A, Aarr, M, K, ldA, transA);
+    getQuarter<T, 2, 2>(B, Barr, K, N, ldB, transB);
+    cblas(CblasNoTrans, CblasNoTrans, (M + 1) / 2, (N + 1) / 2, (K + 1) / 2,
+          one, Aarr, (M + 1) / 2, Barr, (K + 1) / 2, zero, Marr[5],
+          (M + 1) / 2);
+
+    getQuarterSub<T, 2, 1, 1, 1>(A, Aarr, M, K, ldA, transA);
+    getQuarterSum<T, 1, 1, 1, 2>(B, Barr, K, N, ldB, transB);
+    cblas(CblasNoTrans, CblasNoTrans, (M + 1) / 2, (N + 1) / 2, (K + 1) / 2,
+          one, Aarr, (M + 1) / 2, Barr, (K + 1) / 2, zero, Marr[6],
+          (M + 1) / 2);
+
+    getQuarterSub<T, 1, 2, 2, 2>(A, Aarr, M, K, ldA, transA);
+    getQuarterSum<T, 2, 1, 2, 2>(B, Barr, K, N, ldB, transB);
+    cblas(CblasNoTrans, CblasNoTrans, (M + 1) / 2, (N + 1) / 2, (K + 1) / 2,
+          one, Aarr, (M + 1) / 2, Barr, (K + 1) / 2, zero, Marr[7],
+          (M + 1) / 2);
+
+    T *C11 = C, *C12 = &(C[(N + 1) / 2 * ldC]), *C21 = &(C[(M + 1) / 2]),
+      *C22 = &(C[(M + 1) / 2 + (N + 1) / 2 * ldC]);
+    for(int i = 0; i < (M + 1) / 2; i++)
+    {
+        for(int j = 0; j < (N + 1) / 2; j++)
+        {
+            C11[i + j * ldC] = beta * C11[i + j * ldC] +
+                               alpha * (Marr[1][i + (M + 1) / 2 * j] +
+                                        Marr[4][i + (M + 1) / 2 * j] -
+                                        Marr[5][i + (M + 1) / 2 * j] +
+                                        Marr[7][i + (M + 1) / 2 * j]);
+            if(j < N / 2)
+                C12[i + j * ldC] = beta * C12[i + j * ldC] +
+                                   alpha * (Marr[3][i + (M + 1) / 2 * j] +
+                                            Marr[5][i + (M + 1) / 2 * j]);
+            if(i < M / 2)
+                C21[i + j * ldC] = beta * C21[i + j * ldC] +
+                                   alpha * (Marr[2][i + (M + 1) / 2 * j] +
+                                            Marr[4][i + (M + 1) / 2 * j]);
+            if(i < M / 2 && j < N / 2)
+                C22[i + j * ldC] = beta * C22[i + j * ldC] +
+                                   alpha * (Marr[1][i + (M + 1) / 2 * j] -
+                                            Marr[2][i + (M + 1) / 2 * j] +
+                                            Marr[3][i + (M + 1) / 2 * j] +
+                                            Marr[6][i + (M + 1) / 2 * j]);
+        }
+    }
+
+    delete[] Aarr;
+    delete[] Barr;
+    for(int i = 1; i <= 7; i++)
+        delete[] Marr[i];
+}
+
+//! GEMM for contiguous matrices without padding through StarPU buffers
+template <typename T> void cpu(TransOp transA, TransOp transB,
+                          Index m, Index n, Index k, T alpha,
+                          const T *A, const T *B, T beta, T *C) noexcept
+{
+    // It is OK to convert values as it was checked during task submission
+    CBLAS_INT M = m, N = n, K = k, ldA, ldB, ldC = M;
+    CBLAS_TRANSPOSE transA_, transB_;
+    // Convert other values to CBLAS types
+    switch(transA.value)
+    {
+    case TransOp::NoTrans:
+        transA_ = CblasNoTrans;
+        ldA = M;
+        break;
+    // This parameter was already checked in gemm_check_opA_opB
+    // case TransOp::Trans:
+    default:
+        transA_ = CblasTrans;
+        ldA = K;
+    }
+    switch(transB.value)
+    {
+    case TransOp::NoTrans:
+        transB_ = CblasNoTrans;
+        ldB = K;
+        break;
+    // This parameter was already checked in gemm_check_opA_opB
+    // case TransOp::Trans:
+    default:
+        transB_ = CblasTrans;
+        ldB = N;
+    }
+    // Call corresponding CBLAS routine
+    strassen_blas(transA_, transB_, M, N, K, alpha, A, ldA, B, ldB,
+                      beta, C, ldC);
+}
+
+//#endif // NNTILE_USE_CBLAS
+
+// Explicit instantiation
+template
+void cpu<fp32_t>(TransOp transA, TransOp transB,
+                          Index M, Index N, Index K, fp32_t alpha,
+                          const fp32_t *A, const fp32_t *B, fp32_t beta, fp32_t *C)
+	noexcept;
+template
+void cpu<fp64_t>(TransOp transA, TransOp transB,
+                          Index M, Index N, Index K, fp64_t alpha,
+                          const fp64_t *A, const fp64_t *B, fp64_t beta, fp64_t *C)
+    noexcept;
+
+} // namespace strassen
+} // namespace kernel
+} // namespace nntile
+

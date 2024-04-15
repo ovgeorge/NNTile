@@ -69,6 +69,7 @@ set(KERNEL_SRC
     "kernel/adamw_step/cpu.cc"
     "kernel/transpose/cpu.cc"
     "kernel/conv2d/cpu.cc"
+	"${CMAKE_CURRENT_BINARY_DIR}/kernel/strassen/cpu.cc"
     )
 
 if(NNTILE_USE_CUDA)
@@ -149,7 +150,6 @@ set(STARPU_SRC
     "starpu/drelu.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/starpu/axpy.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/starpu/gemm.cc"
-    "${CMAKE_CURRENT_BINARY_DIR}/starpu/strassen.cc"
     "starpu/gemm_ex.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/starpu/nrm2.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/starpu/scal_inplace.cc"
@@ -201,7 +201,7 @@ set(STARPU_SRC
     "starpu/adamw_step.cc"
     "starpu/transpose.cc"
     "starpu/conv2d.cc"
-    #"starpu/strassen.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/starpu/strassen.cc"
     )
 
 set(TILE_SRC

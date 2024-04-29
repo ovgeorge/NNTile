@@ -700,42 +700,42 @@ void strassen(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
 }
 
 // Explicit instantiation
-template
-void strassen_async<fp32_t, fp32_t>(fp32_t alpha, const TransOp &transA,
-        const Tensor<fp32_t> &A,
-        const TransOp &transB, const Tensor<fp32_t> &B, fp32_t beta,
-        const Tensor<fp32_t> &C, Index ndim, Index batch_ndim, int redux);
+template void strassen_async<fp32_t, fp32_t>(
+    fp32_t alpha, const TransOp &transA, const Tensor<fp32_t> &A,
+    const TransOp &transB, const Tensor<fp32_t> &B, fp32_t beta,
+    const Tensor<fp32_t> &C, Index ndim, Index batch_ndim, int redux);
 
-template
-void strassen_async<fp64_t, fp64_t>(fp64_t alpha, const TransOp &transA,
-        const Tensor<fp64_t> &A,
-        const TransOp &transB, const Tensor<fp64_t> &B, fp64_t beta,
-        const Tensor<fp64_t> &C, Index ndim, Index batch_ndim, int redux);
+template void strassen_async<fp64_t, fp64_t>(
+    fp64_t alpha, const TransOp &transA, const Tensor<fp64_t> &A,
+    const TransOp &transB, const Tensor<fp64_t> &B, fp64_t beta,
+    const Tensor<fp64_t> &C, Index ndim, Index batch_ndim, int redux);
 
-template
-void strassen_async<fp16_t, fp32_t>(fp32_t alpha, const TransOp &transA,
-        const Tensor<fp16_t> &A,
-        const TransOp &transB, const Tensor<fp16_t> &B, fp32_t beta,
-        const Tensor<fp16_t> &C, Index ndim, Index batch_ndim, int redux);
+// template
+// void strassen_async<fp16_t, fp32_t>(fp32_t alpha, const TransOp &transA,
+//         const Tensor<fp16_t> &A,
+//         const TransOp &transB, const Tensor<fp16_t> &B, fp32_t beta,
+//         const Tensor<fp16_t> &C, Index ndim, Index batch_ndim, int redux);
 
 // Explicit instantiation
-template
-void strassen<fp32_t, fp32_t>(fp32_t alpha, const TransOp &transA,
-        const Tensor<fp32_t> &A,
-        const TransOp &transB, const Tensor<fp32_t> &B, fp32_t beta,
-        const Tensor<fp32_t> &C, Index ndim, Index batch_ndim, int redux);
+template void strassen<fp32_t, fp32_t>(fp32_t alpha, const TransOp &transA,
+                                       const Tensor<fp32_t> &A,
+                                       const TransOp &transB,
+                                       const Tensor<fp32_t> &B, fp32_t beta,
+                                       const Tensor<fp32_t> &C, Index ndim,
+                                       Index batch_ndim, int redux);
 
-template
-void strassen<fp64_t, fp64_t>(fp64_t alpha, const TransOp &transA,
-        const Tensor<fp64_t> &A,
-        const TransOp &transB, const Tensor<fp64_t> &B, fp64_t beta,
-        const Tensor<fp64_t> &C, Index ndim, Index batch_ndim, int redux);
+template void strassen<fp64_t, fp64_t>(fp64_t alpha, const TransOp &transA,
+                                       const Tensor<fp64_t> &A,
+                                       const TransOp &transB,
+                                       const Tensor<fp64_t> &B, fp64_t beta,
+                                       const Tensor<fp64_t> &C, Index ndim,
+                                       Index batch_ndim, int redux);
 
-template
-void strassen<fp16_t, fp32_t>(fp32_t alpha, const TransOp &transA,
-        const Tensor<fp16_t> &A,
-        const TransOp &transB, const Tensor<fp16_t> &B, fp32_t beta,
-        const Tensor<fp16_t> &C, Index ndim, Index batch_ndim, int redux);
+// template
+// void strassen<fp16_t, fp32_t>(fp32_t alpha, const TransOp &transA,
+//         const Tensor<fp16_t> &A,
+//         const TransOp &transB, const Tensor<fp16_t> &B, fp32_t beta,
+//         const Tensor<fp16_t> &C, Index ndim, Index batch_ndim, int redux);
 
 } // namespace tensor
 } // namespace nntile

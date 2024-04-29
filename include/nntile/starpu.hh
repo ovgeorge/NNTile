@@ -77,6 +77,7 @@
 #include <nntile/starpu/gelu_backward.hh>
 #include <nntile/starpu/gelutanh_backward.hh>
 #include <nntile/starpu/add.hh>
+#include <nntile/starpu/add2d.hh>
 #include <nntile/starpu/add_scalar.hh>
 #include <nntile/starpu/embedding.hh>
 #include <nntile/starpu/embedding_backward.hh>
@@ -156,6 +157,7 @@ void init()
     gelu_backward::init();
     gelutanh_backward::init();
     add::init();
+    add2d::init();
     add_scalar::init();
     embedding::init();
     embedding_backward::init();

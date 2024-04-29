@@ -13,12 +13,215 @@
  * */
 
 #include "nntile/tensor/strassen.hh"
+#include "nntile/starpu/add2d.hh"
+#include "nntile/starpu/gemm.hh"
 #include "nntile/starpu/strassen.hh"
+
+using nntile::starpu::Handle;
 
 namespace nntile
 {
 namespace tensor
 {
+
+template <typename T, int Ij1, int iJ1, int Ij2, int iJ2, int weight>
+void getQuarters(Handle A, Handle quarter, Index _M, Index _K, Index ld,
+                 TransOp transA)
+{
+    Index M = _M + (_M % 2);
+    Index K = _K + (_K % 2);
+
+    // dst = 0
+    Index offset = 0;
+    starpu::add2d::submit<T>(M / 2, K / 2, 0, A, 0, ld, offset, quarter, 0,
+                             M / 2);
+    starpu_task_wait_for_all();
+    // dst += first quarter
+    offset = (M / 2 * (Ij1 - 1)) + (K / 2 * (iJ1 - 1)) * ld;
+    starpu::add2d::submit<T>(M / 2, K / 2, 1, A, offset, ld, 1, quarter, 0,
+                             M / 2);
+    starpu_task_wait_for_all();
+    // dst += second quarter
+    offset = (M / 2 * (Ij2 - 1)) + (K / 2 * (iJ2 - 1)) * ld;
+    starpu::add2d::submit<T>(M / 2, K / 2, weight, A, offset, ld, 1, quarter, 0,
+                             M / 2);
+    starpu_task_wait_for_all();
+}
+
+template <typename T, int Ij1, int iJ1, int Ij2, int iJ2>
+void getQuarterSum(Handle A, Handle quarter, Index _M, Index _K, Index ld,
+                   TransOp transA)
+{
+    getQuarters<T, Ij1, iJ1, Ij2, iJ2, 1>(A, quarter, _M, _K, ld, transA);
+}
+
+template <typename T, int Ij1, int iJ1, int Ij2, int iJ2>
+void getQuarterSub(Handle A, Handle quarter, Index _M, Index _K, Index ld,
+                   TransOp transA)
+{
+    getQuarters<T, Ij1, iJ1, Ij2, iJ2, -1>(A, quarter, _M, _K, ld, transA);
+}
+
+template <typename T, int Ij, int iJ>
+void getQuarter(Handle A, Handle quarter, Index _M, Index _K, Index ld,
+                TransOp transA)
+{
+    getQuarters<T, Ij, iJ, Ij, iJ, 0>(A, quarter, _M, _K, ld, transA);
+}
+
+template <typename T, typename T_scal>
+void starpu__strassen__submit(const TransOp &transA, const TransOp &transB,
+                              Index M, Index N, Index K, Index batch,
+                              T_scal alpha, Handle A, Handle B, T_scal beta,
+                              Handle C, int redux = 0)
+{
+    // TODO: use traits to get ld values
+    Index ldA = M, ldB = K, ldC = M;
+
+    T *_Aarr_data[7];
+    size_t Aarr_size = ((M + 1) / 2) * ((K + 1) / 2);
+    for(int i = 0; i < 7; i++)
+        _Aarr_data[i] = new T[Aarr_size];
+    starpu::VariableHandle _Aarr[7] = {
+        starpu::VariableHandle(_Aarr_data[0], Aarr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Aarr_data[1], Aarr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Aarr_data[2], Aarr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Aarr_data[3], Aarr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Aarr_data[4], Aarr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Aarr_data[5], Aarr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Aarr_data[6], Aarr_size * sizeof(T), STARPU_RW),
+    };
+    starpu::VariableHandle *Aarr = &(_Aarr[0]) - 1;
+
+    T *_Barr_data[7];
+    size_t Barr_size = ((N + 1) / 2) * ((K + 1) / 2);
+    for(int i = 0; i < 7; i++)
+        _Barr_data[i] = new T[Barr_size];
+    starpu::VariableHandle _Barr[7] = {
+        starpu::VariableHandle(_Barr_data[0], Barr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Barr_data[1], Barr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Barr_data[2], Barr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Barr_data[3], Barr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Barr_data[4], Barr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Barr_data[5], Barr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Barr_data[6], Barr_size * sizeof(T),
+                               STARPU_RW)};
+    starpu::VariableHandle *Barr = &(_Barr[0]) - 1;
+
+    T *_Marr_data[7];
+    size_t Marr_size = ((M + 1) / 2) * ((N + 1) / 2);
+    for(int i = 0; i < 7; i++)
+        _Marr_data[i] = new T[Marr_size];
+    starpu::VariableHandle _Marr[7] = {
+        starpu::VariableHandle(_Marr_data[0], Marr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Marr_data[1], Marr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Marr_data[2], Marr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Marr_data[3], Marr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Marr_data[4], Marr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Marr_data[5], Marr_size * sizeof(T), STARPU_RW),
+        starpu::VariableHandle(_Marr_data[6], Marr_size * sizeof(T),
+                               STARPU_RW)};
+    starpu::VariableHandle *Marr = &(_Marr[0]) - 1;
+
+    TransOp notrans(TransOp::NoTrans);
+    T zero = 0.0, one = 1.0;
+    getQuarterSum<T, 1, 1, 2, 2>(A, _Aarr[0], M, K, ldA, transA);
+    getQuarterSum<T, 1, 1, 2, 2>(B, Barr[1], K, N, ldB, transB);
+    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
+                               (K + 1) / 2, /*batches*/ 1, one, Aarr[1],
+                               Barr[1], zero, Marr[1]);
+    starpu_task_wait_for_all();
+
+    getQuarterSum<T, 2, 1, 2, 2>(A, Aarr[2], M, K, ldA, transA);
+    getQuarter<T, 1, 1>(B, Barr[2], K, N, ldB, transB);
+    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
+                               (K + 1) / 2, /*batches*/ 1, one, Aarr[2],
+                               Barr[2], zero, Marr[2]);
+    starpu_task_wait_for_all();
+
+    getQuarter<T, 1, 1>(A, Aarr[3], M, K, ldA, transA);
+    getQuarterSub<T, 1, 2, 2, 2>(B, Barr[3], K, N, ldB, transB);
+    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
+                               (K + 1) / 2, /*batches*/ 1, one, Aarr[3],
+                               Barr[3], zero, Marr[3]);
+    starpu_task_wait_for_all();
+
+    getQuarter<T, 2, 2>(A, Aarr[4], M, K, ldA, transA);
+    getQuarterSub<T, 2, 1, 1, 1>(B, Barr[4], K, N, ldB, transB);
+    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
+                               (K + 1) / 2, /*batches*/ 1, one, Aarr[4],
+                               Barr[4], zero, Marr[4]);
+    starpu_task_wait_for_all();
+
+    getQuarterSum<T, 1, 1, 1, 2>(A, Aarr[5], M, K, ldA, transA);
+    getQuarter<T, 2, 2>(B, Barr[5], K, N, ldB, transB);
+    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
+                               (K + 1) / 2, /*batches*/ 1, one, Aarr[5],
+                               Barr[5], zero, Marr[5]);
+    starpu_task_wait_for_all();
+
+    getQuarterSub<T, 2, 1, 1, 1>(A, Aarr[6], M, K, ldA, transA);
+    getQuarterSum<T, 1, 1, 1, 2>(B, Barr[6], K, N, ldB, transB);
+    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
+                               (K + 1) / 2, /*batches*/ 1, one, Aarr[6],
+                               Barr[6], zero, Marr[6]);
+    starpu_task_wait_for_all();
+
+    getQuarterSub<T, 1, 2, 2, 2>(A, Aarr[7], M, K, ldA, transA);
+    getQuarterSum<T, 2, 1, 2, 2>(B, Barr[7], K, N, ldB, transB);
+    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
+                               (K + 1) / 2, /*batches*/ 1, one, Aarr[7],
+                               Barr[7], zero, Marr[7]);
+    starpu_task_wait_for_all();
+
+    Index offset = 0;
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[1], 0,
+                             (M + 1) / 2, beta, C, offset, ldC);
+    starpu_task_wait_for_all();
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[4], 0,
+                             (M + 1) / 2, 1, C, offset, ldC);
+    starpu_task_wait_for_all();
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, -alpha, Marr[5], 0,
+                             (M + 1) / 2, 1, C, offset, ldC);
+    starpu_task_wait_for_all();
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[7], 0,
+                             (M + 1) / 2, 1, C, offset, ldC);
+    starpu_task_wait_for_all();
+
+    offset = (N + 1) / 2 * ldC;
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[3], 0,
+                             (M + 1) / 2, beta, C, offset, ldC);
+    starpu_task_wait_for_all();
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[5], 0,
+                             (M + 1) / 2, 1, C, offset, ldC);
+    starpu_task_wait_for_all();
+
+    offset = (M + 1) / 2;
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[2], 0,
+                             (M + 1) / 2, beta, C, offset, ldC);
+    starpu_task_wait_for_all();
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[4], 0,
+                             (M + 1) / 2, 1, C, offset, ldC);
+    starpu_task_wait_for_all();
+
+    offset = (M + 1) / 2 + (N + 1) / 2 * ldC;
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[1], 0,
+                             (M + 1) / 2, beta, C, offset, ldC);
+    starpu_task_wait_for_all();
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, -alpha, Marr[2], 0,
+                             (M + 1) / 2, 1, C, offset, ldC);
+    starpu_task_wait_for_all();
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[3], 0,
+                             (M + 1) / 2, 1, C, offset, ldC);
+    starpu_task_wait_for_all();
+    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[6], 0,
+                             (M + 1) / 2, 1, C, offset, ldC);
+    starpu_task_wait_for_all();
+
+    // TODO: properly wait for tasks instead of relying on
+    // starpu_task_wait_for_all()
+    starpu_task_wait_for_all();
+}
 
 //! Check if dimensionalities of tensors match strassen
 static inline void strassen_check_ndim(const TensorTraits &A,
@@ -423,10 +626,10 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
                             tile_k = A_first_tile_traits.matrix_shape[ndim][0];
                             break;
                     }
-                    starpu::strassen::submit<T, T_scal>(transA, transB, tile_m,
-                            tile_n,
-                            tile_k, tile_batch, alpha, A_first_tile_handle,
-                            B_first_tile_handle, beta, C_tile_handle, redux);
+                    starpu__strassen__submit<T, T_scal>(
+                        transA, transB, tile_m, tile_n, tile_k, tile_batch,
+                        alpha, A_first_tile_handle, B_first_tile_handle, beta,
+                        C_tile_handle, redux);
                 }
                 // all other l>0
                 for(Index l = 1; l < k; ++l)

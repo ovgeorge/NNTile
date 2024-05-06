@@ -32,16 +32,18 @@ strassen = {
 
 
 # Helper function returns bool value true if test passes
-def helper(dtype, tA, tB, matrix_shape, shared_size, alpha, beta, batch=3):
+def helper(dtype, tA, tB, matrix_shape, shared_size, tile_size, alpha, beta, batch=3):
     # Describe single-tile tensor, located at node 0
     mpi_distr = [0]
     next_tag = 0
+    tile_shape = [tile_size, tile_size, batch]
 
     if tA == nntile.notrans:
         shape = [matrix_shape[0], shared_size, batch]
     else:
         shape = [shared_size, matrix_shape[0], batch]
-    traits = nntile.tensor.TensorTraits(shape, shape)
+    traits = nntile.tensor.TensorTraits(shape, tile_shape)
+    mpi_distr = [0] * traits.grid.nelems
     A = Tensor[dtype](traits, mpi_distr, next_tag)
     src_A = np.array(np.random.randn(*shape), dtype=dtype, order="F")
     next_tag = A.next_tag
@@ -50,13 +52,15 @@ def helper(dtype, tA, tB, matrix_shape, shared_size, alpha, beta, batch=3):
         shape = [shared_size, matrix_shape[1], batch]
     else:
         shape = [matrix_shape[1], shared_size, batch]
-    traits = nntile.tensor.TensorTraits(shape, shape)
+    traits = nntile.tensor.TensorTraits(shape, tile_shape)
+    mpi_distr = [0] * traits.grid.nelems
     B = Tensor[dtype](traits, mpi_distr, next_tag)
     src_B = np.array(np.random.randn(*shape), dtype=dtype, order="F")
     next_tag = B.next_tag
 
     shape = [matrix_shape[0], matrix_shape[1], batch]
-    traits = nntile.tensor.TensorTraits(shape, shape)
+    traits = nntile.tensor.TensorTraits(shape, tile_shape)
+    mpi_distr = [0] * traits.grid.nelems
     C = Tensor[dtype](traits, mpi_distr, next_tag)
     src_C = np.array(np.random.randn(*shape), dtype=dtype, order="F")
     dst_C = np.zeros_like(src_C, dtype=dtype, order="F")
@@ -96,9 +100,10 @@ def tests():
     trans = [nntile.notrans, nntile.trans]
     matrix_sizes = [[4, 4], [6, 4], [4, 6], [5, 4], [4, 5], [3, 7], [7, 3], [7, 7]]
     shared_sizes = range(1, 11)
+    tile_sizes = [2, 3]
     ab = [-0.5, -0.33, 0, 0.33, 0.5]
     args_sets = itertools.product(
-        dtypes, trans, trans, matrix_sizes, shared_sizes, ab, ab
+        dtypes, trans, trans, matrix_sizes, shared_sizes, tile_sizes, ab, ab
     )
     for args in args_sets:
         assert helper(*args)

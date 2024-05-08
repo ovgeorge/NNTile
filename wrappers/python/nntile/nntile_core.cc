@@ -747,7 +747,7 @@ void def_mod_tensor(py::module_ &m)
 
     m.def("strassen_fp64", &strassen<fp64_t, fp64_t>);
     m.def("strassen_fp32", &strassen<fp32_t, fp32_t>);
-    m.def("strassen_fp16", &strassen<fp16_t, fp32_t>);
+    // m.def("strassen_fp16", &strassen<fp16_t, fp32_t>);
 }
 
 // Main extension module with all wrappers

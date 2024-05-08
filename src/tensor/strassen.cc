@@ -13,9 +13,8 @@
  * */
 
 #include "nntile/tensor/strassen.hh"
-#include "nntile/starpu/add2d.hh"
+#include "nntile/starpu/add.hh"
 #include "nntile/starpu/gemm.hh"
-#include "nntile/starpu/strassen.hh"
 
 using nntile::starpu::Handle;
 
@@ -23,205 +22,6 @@ namespace nntile
 {
 namespace tensor
 {
-
-template <typename T, int Ij1, int iJ1, int Ij2, int iJ2, int weight>
-void getQuarters(Handle A, Handle quarter, Index _M, Index _K, Index ld,
-                 TransOp transA)
-{
-    Index M = _M + (_M % 2);
-    Index K = _K + (_K % 2);
-
-    // dst = 0
-    Index offset = 0;
-    starpu::add2d::submit<T>(M / 2, K / 2, 0, A, 0, ld, offset, quarter, 0,
-                             M / 2);
-    starpu_task_wait_for_all();
-    // dst += first quarter
-    offset = (M / 2 * (Ij1 - 1)) + (K / 2 * (iJ1 - 1)) * ld;
-    starpu::add2d::submit<T>(M / 2, K / 2, 1, A, offset, ld, 1, quarter, 0,
-                             M / 2);
-    starpu_task_wait_for_all();
-    // dst += second quarter
-    offset = (M / 2 * (Ij2 - 1)) + (K / 2 * (iJ2 - 1)) * ld;
-    starpu::add2d::submit<T>(M / 2, K / 2, weight, A, offset, ld, 1, quarter, 0,
-                             M / 2);
-    starpu_task_wait_for_all();
-}
-
-template <typename T, int Ij1, int iJ1, int Ij2, int iJ2>
-void getQuarterSum(Handle A, Handle quarter, Index _M, Index _K, Index ld,
-                   TransOp transA)
-{
-    getQuarters<T, Ij1, iJ1, Ij2, iJ2, 1>(A, quarter, _M, _K, ld, transA);
-}
-
-template <typename T, int Ij1, int iJ1, int Ij2, int iJ2>
-void getQuarterSub(Handle A, Handle quarter, Index _M, Index _K, Index ld,
-                   TransOp transA)
-{
-    getQuarters<T, Ij1, iJ1, Ij2, iJ2, -1>(A, quarter, _M, _K, ld, transA);
-}
-
-template <typename T, int Ij, int iJ>
-void getQuarter(Handle A, Handle quarter, Index _M, Index _K, Index ld,
-                TransOp transA)
-{
-    getQuarters<T, Ij, iJ, Ij, iJ, 0>(A, quarter, _M, _K, ld, transA);
-}
-
-template <typename T, typename T_scal>
-void starpu__strassen__submit(const TransOp &transA, const TransOp &transB,
-                              Index M, Index N, Index K, Index batch,
-                              T_scal alpha, Handle A, Handle B, T_scal beta,
-                              Handle C, int redux = 0)
-{
-    // TODO: use traits to get ld values
-    Index ldA = M, ldB = K, ldC = M;
-
-    T *_Aarr_data[7];
-    size_t Aarr_size = ((M + 1) / 2) * ((K + 1) / 2);
-    for(int i = 0; i < 7; i++)
-        _Aarr_data[i] = new T[Aarr_size];
-    starpu::VariableHandle _Aarr[7] = {
-        starpu::VariableHandle(_Aarr_data[0], Aarr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Aarr_data[1], Aarr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Aarr_data[2], Aarr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Aarr_data[3], Aarr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Aarr_data[4], Aarr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Aarr_data[5], Aarr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Aarr_data[6], Aarr_size * sizeof(T), STARPU_RW),
-    };
-    starpu::VariableHandle *Aarr = &(_Aarr[0]) - 1;
-
-    T *_Barr_data[7];
-    size_t Barr_size = ((N + 1) / 2) * ((K + 1) / 2);
-    for(int i = 0; i < 7; i++)
-        _Barr_data[i] = new T[Barr_size];
-    starpu::VariableHandle _Barr[7] = {
-        starpu::VariableHandle(_Barr_data[0], Barr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Barr_data[1], Barr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Barr_data[2], Barr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Barr_data[3], Barr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Barr_data[4], Barr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Barr_data[5], Barr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Barr_data[6], Barr_size * sizeof(T),
-                               STARPU_RW)};
-    starpu::VariableHandle *Barr = &(_Barr[0]) - 1;
-
-    T *_Marr_data[7];
-    size_t Marr_size = ((M + 1) / 2) * ((N + 1) / 2);
-    for(int i = 0; i < 7; i++)
-        _Marr_data[i] = new T[Marr_size];
-    starpu::VariableHandle _Marr[7] = {
-        starpu::VariableHandle(_Marr_data[0], Marr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Marr_data[1], Marr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Marr_data[2], Marr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Marr_data[3], Marr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Marr_data[4], Marr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Marr_data[5], Marr_size * sizeof(T), STARPU_RW),
-        starpu::VariableHandle(_Marr_data[6], Marr_size * sizeof(T),
-                               STARPU_RW)};
-    starpu::VariableHandle *Marr = &(_Marr[0]) - 1;
-
-    TransOp notrans(TransOp::NoTrans);
-    T zero = 0.0, one = 1.0;
-    getQuarterSum<T, 1, 1, 2, 2>(A, _Aarr[0], M, K, ldA, transA);
-    getQuarterSum<T, 1, 1, 2, 2>(B, Barr[1], K, N, ldB, transB);
-    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
-                               (K + 1) / 2, /*batches*/ 1, one, Aarr[1],
-                               Barr[1], zero, Marr[1]);
-    starpu_task_wait_for_all();
-
-    getQuarterSum<T, 2, 1, 2, 2>(A, Aarr[2], M, K, ldA, transA);
-    getQuarter<T, 1, 1>(B, Barr[2], K, N, ldB, transB);
-    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
-                               (K + 1) / 2, /*batches*/ 1, one, Aarr[2],
-                               Barr[2], zero, Marr[2]);
-    starpu_task_wait_for_all();
-
-    getQuarter<T, 1, 1>(A, Aarr[3], M, K, ldA, transA);
-    getQuarterSub<T, 1, 2, 2, 2>(B, Barr[3], K, N, ldB, transB);
-    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
-                               (K + 1) / 2, /*batches*/ 1, one, Aarr[3],
-                               Barr[3], zero, Marr[3]);
-    starpu_task_wait_for_all();
-
-    getQuarter<T, 2, 2>(A, Aarr[4], M, K, ldA, transA);
-    getQuarterSub<T, 2, 1, 1, 1>(B, Barr[4], K, N, ldB, transB);
-    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
-                               (K + 1) / 2, /*batches*/ 1, one, Aarr[4],
-                               Barr[4], zero, Marr[4]);
-    starpu_task_wait_for_all();
-
-    getQuarterSum<T, 1, 1, 1, 2>(A, Aarr[5], M, K, ldA, transA);
-    getQuarter<T, 2, 2>(B, Barr[5], K, N, ldB, transB);
-    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
-                               (K + 1) / 2, /*batches*/ 1, one, Aarr[5],
-                               Barr[5], zero, Marr[5]);
-    starpu_task_wait_for_all();
-
-    getQuarterSub<T, 2, 1, 1, 1>(A, Aarr[6], M, K, ldA, transA);
-    getQuarterSum<T, 1, 1, 1, 2>(B, Barr[6], K, N, ldB, transB);
-    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
-                               (K + 1) / 2, /*batches*/ 1, one, Aarr[6],
-                               Barr[6], zero, Marr[6]);
-    starpu_task_wait_for_all();
-
-    getQuarterSub<T, 1, 2, 2, 2>(A, Aarr[7], M, K, ldA, transA);
-    getQuarterSum<T, 2, 1, 2, 2>(B, Barr[7], K, N, ldB, transB);
-    starpu::gemm::submit<T, T>(notrans, notrans, (M + 1) / 2, (N + 1) / 2,
-                               (K + 1) / 2, /*batches*/ 1, one, Aarr[7],
-                               Barr[7], zero, Marr[7]);
-    starpu_task_wait_for_all();
-
-    Index offset = 0;
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[1], 0,
-                             (M + 1) / 2, beta, C, offset, ldC);
-    starpu_task_wait_for_all();
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[4], 0,
-                             (M + 1) / 2, 1, C, offset, ldC);
-    starpu_task_wait_for_all();
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, -alpha, Marr[5], 0,
-                             (M + 1) / 2, 1, C, offset, ldC);
-    starpu_task_wait_for_all();
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[7], 0,
-                             (M + 1) / 2, 1, C, offset, ldC);
-    starpu_task_wait_for_all();
-
-    offset = (N + 1) / 2 * ldC;
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[3], 0,
-                             (M + 1) / 2, beta, C, offset, ldC);
-    starpu_task_wait_for_all();
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[5], 0,
-                             (M + 1) / 2, 1, C, offset, ldC);
-    starpu_task_wait_for_all();
-
-    offset = (M + 1) / 2;
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[2], 0,
-                             (M + 1) / 2, beta, C, offset, ldC);
-    starpu_task_wait_for_all();
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[4], 0,
-                             (M + 1) / 2, 1, C, offset, ldC);
-    starpu_task_wait_for_all();
-
-    offset = (M + 1) / 2 + (N + 1) / 2 * ldC;
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[1], 0,
-                             (M + 1) / 2, beta, C, offset, ldC);
-    starpu_task_wait_for_all();
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, -alpha, Marr[2], 0,
-                             (M + 1) / 2, 1, C, offset, ldC);
-    starpu_task_wait_for_all();
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[3], 0,
-                             (M + 1) / 2, 1, C, offset, ldC);
-    starpu_task_wait_for_all();
-    starpu::add2d::submit<T>((M + 1) / 2, (N + 1) / 2, alpha, Marr[6], 0,
-                             (M + 1) / 2, 1, C, offset, ldC);
-    starpu_task_wait_for_all();
-
-    // TODO: properly wait for tasks instead of relying on
-    // starpu_task_wait_for_all()
-    starpu_task_wait_for_all();
-}
 
 //! Check if dimensionalities of tensors match strassen
 static inline void strassen_check_ndim(const TensorTraits &A,
@@ -530,6 +330,130 @@ void strassen_check(const TransOp &transA, const TensorTraits &A,
     strassen_check_opB_C(transB, B, C, ndim, batch_ndim);
 }
 
+//! Allocate 7x tiles for A, B and C as temporary memory
+template <typename T>
+std::vector<std::vector<std::vector<std::vector<starpu::VariableHandle>>>>
+allocate_memory_for_quarters(size_t size, Index s1, Index s2, Index s3,
+                             Index s4)
+{
+    std::vector<std::vector<std::vector<std::vector<starpu::VariableHandle>>>>
+        ret;
+    // First index - Strassen's, i.e. 1-7 (0 ignored)
+    for(int i1 = 0; i1 <= s1; i1++)
+    {
+        ret.push_back(
+            std::vector<std::vector<std::vector<starpu::VariableHandle>>>());
+        if(i1 == 0)
+            continue;
+        // Second index - batch number
+        for(int i2 = 0; i2 < s2; i2++)
+        {
+            ret[i1].push_back(
+                std::vector<std::vector<starpu::VariableHandle>>());
+            // Third index - one of the axes
+            for(int i3 = 0; i3 < s3; i3++)
+            {
+                ret[i1][i2].push_back(std::vector<starpu::VariableHandle>());
+                // Forth index - one of the axes
+                for(int i4 = 0; i4 < s4; i4++)
+                {
+                    ret[i1][i2][i3].push_back(
+                        starpu::VariableHandle(size, STARPU_RW));
+                }
+            }
+        }
+    }
+    return ret;
+}
+
+//! Calculate weighted sum of chosen quaters for Strassen
+template <typename T, int Ij1, int iJ1, int Ij2, int iJ2, int weight>
+void _calculate_quater(
+    Index batch, Index tile_batch, Index k, Index tile_k, Index m, Index tile_m,
+    const TransOp &transA, const Tensor<T> &A,
+    std::vector<std::vector<std::vector<starpu::VariableHandle>>> &quater)
+{
+    constexpr T one = 1.0, zero = 0.0, w = weight;
+
+    std::array<Index, 2> opA_stride;
+    switch(transA.value)
+    {
+    case TransOp::NoTrans:
+        opA_stride = {1, m};
+        break;
+    case TransOp::Trans:
+        opA_stride = {k, 1};
+        break;
+    }
+
+    // All per-tile starpu strassen calls shall appear here
+    for(Index b = 0; b < batch; ++b)
+    {
+        for(Index j = 0; j < k / 2; ++j)
+        {
+            for(Index i = 0; i < m / 2; ++i)
+            {
+                Index base_A_tile_offset =
+                    opA_stride[0] * i + opA_stride[1] * j + b * m * k;
+                Index tile_offset = base_A_tile_offset +
+                                    (Ij1 - 1) * opA_stride[0] * (m / 2) +
+                                    (iJ1 - 1) * opA_stride[1] * (k / 2);
+                auto tile_handle = A.get_tile_handle(tile_offset);
+
+                // Execute
+                starpu::add::submit<T>(tile_m * tile_k, one, tile_handle, zero,
+                                       quater[b][i][j]);
+
+                if(weight == 0)
+                    continue;
+
+                tile_offset = base_A_tile_offset +
+                              (Ij2 - 1) * opA_stride[0] * (m / 2) +
+                              (iJ2 - 1) * opA_stride[1] * (k / 2);
+                tile_handle = A.get_tile_handle(tile_offset);
+                starpu::add::submit<T>(tile_m * tile_k, w, tile_handle, one,
+                                       quater[b][i][j]);
+
+                // Flush cache for the output tile on every node
+                quater[b][m][k].mpi_flush();
+            }
+        }
+    }
+}
+
+//! Calculate sum of chosen quaters for Strassen
+template <typename T, int Ij1, int iJ1, int Ij2, int iJ2>
+void calculate_quater_sum(
+    Index batch, Index tile_batch, Index k, Index tile_k, Index m, Index tile_m,
+    const TransOp &transA, const Tensor<T> &A,
+    std::vector<std::vector<std::vector<starpu::VariableHandle>>> &quater)
+{
+    return _calculate_quater<T, Ij1, iJ1, Ij2, iJ2, 1>(
+        batch, tile_batch, k, tile_k, m, tile_m, transA, A, quater);
+}
+
+//! Calculate difference of chosen quaters for Strassen
+template <typename T, int Ij1, int iJ1, int Ij2, int iJ2>
+void calculate_quater_sub(
+    Index batch, Index tile_batch, Index k, Index tile_k, Index m, Index tile_m,
+    const TransOp &transA, const Tensor<T> &A,
+    std::vector<std::vector<std::vector<starpu::VariableHandle>>> &quater)
+{
+    return _calculate_quater<T, Ij1, iJ1, Ij2, iJ2, -1>(
+        batch, tile_batch, k, tile_k, m, tile_m, transA, A, quater);
+}
+
+//! Copy chosen quater for Strassen
+template <typename T, int Ij, int iJ>
+void calculate_quater(
+    Index batch, Index tile_batch, Index k, Index tile_k, Index m, Index tile_m,
+    const TransOp &transA, const Tensor<T> &A,
+    std::vector<std::vector<std::vector<starpu::VariableHandle>>> &quater)
+{
+    return _calculate_quater<T, Ij, iJ, Ij, iJ, 0>(
+        batch, tile_batch, k, tile_k, m, tile_m, transA, A, quater);
+}
+
 //! Asynchronous version of tensor-wise strassen operation
 /*! Matrix multiplication for tensors, which are virtually reshaped
  *
@@ -541,135 +465,184 @@ void strassen_check(const TransOp &transA, const TensorTraits &A,
  * @param[in] beta: Beta multiplier
  * @param[inout] C: Output tensor C
  * @param[in] ndim: Number of dimensions used in strassen contraction
- * @param[in] batch_ndim: Number of last dimensions used for batching of strassens
+ * @param[in] batch_ndim: Number of last dimensions used for batching of
+ * strassens
  * @param[in] redux: Whether or not to use STARPU_REDUX
  * */
-template<typename T, typename T_scal>
+template <typename T, typename T_scal>
 void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
-        const TransOp &transB, const Tensor<T> &B, T_scal beta,
-        const Tensor<T> &C, Index ndim, Index batch_ndim, int redux)
+                    const TransOp &transB, const Tensor<T> &B, T_scal beta,
+                    const Tensor<T> &C, Index ndim, Index batch_ndim, int redux)
 {
+
     // Check inputs (throw exception in case of an error)
     strassen_check(transA, A, transB, B, C, ndim, batch_ndim);
     // Sizes of A, B and C as simple matrices (grids of tiles) for strassen
     int mpi_rank = starpu_mpi_world_rank();
     int ret;
-    constexpr T_scal one = 1;
-    Index m = C.grid.matrix_shape[A.ndim-batch_ndim-ndim][0];
-    Index batch = C.grid.matrix_shape[C.ndim-batch_ndim][1];
-    Index n = C.grid.matrix_shape[A.ndim-batch_ndim-ndim][1] / batch;
+    constexpr T one = 1.0, zero = 0.0;
+    Index m = C.grid.matrix_shape[A.ndim - batch_ndim - ndim][0];
+    Index batch = C.grid.matrix_shape[C.ndim - batch_ndim][1];
+    Index n = C.grid.matrix_shape[A.ndim - batch_ndim - ndim][1] / batch;
     Index k;
     std::array<Index, 2> opA_stride, opB_stride;
     switch(transA.value)
     {
-        case TransOp::NoTrans:
-            k = A.grid.matrix_shape[A.ndim-batch_ndim-ndim][1] / batch;
-            opA_stride = {1, m};
-            break;
-        case TransOp::Trans:
-            k = A.grid.matrix_shape[ndim][0];
-            opA_stride = {k, 1};
-            break;
+    case TransOp::NoTrans:
+        k = A.grid.matrix_shape[A.ndim - batch_ndim - ndim][1] / batch;
+        opA_stride = {1, m};
+        break;
+    case TransOp::Trans:
+        k = A.grid.matrix_shape[ndim][0];
+        opA_stride = {k, 1};
+        break;
     }
     switch(transB.value)
     {
-        case TransOp::NoTrans:
-            opB_stride = {1, k};
-            break;
-        case TransOp::Trans:
-            opB_stride = {n, 1};
-            break;
+    case TransOp::NoTrans:
+        opB_stride = {1, k};
+        break;
+    case TransOp::Trans:
+        opB_stride = {n, 1};
+        break;
     }
-    // All per-tile starpu strassen calls shall appear here
+
+    auto C_tile_traits = C.get_tile_traits(0);
+    // Getting sizes
+    Index tile_m = C_tile_traits.matrix_shape[A.ndim - batch_ndim - ndim][0];
+    Index tile_batch = C_tile_traits.matrix_shape[C.ndim - batch_ndim][1];
+    Index tile_n =
+        C_tile_traits.matrix_shape[A.ndim - batch_ndim - ndim][1] / tile_batch;
+    Index tile_k;
+    auto A_first_tile_traits = A.get_tile_traits(0);
+    switch(transA.value)
+    {
+    case TransOp::NoTrans:
+        tile_k =
+            A_first_tile_traits.matrix_shape[A.ndim - batch_ndim - ndim][1] /
+            tile_batch;
+        break;
+        // This parameter was already checked
+        // case TransOp::Trans:
+    default:
+        tile_k = A_first_tile_traits.matrix_shape[ndim][0];
+        break;
+    }
+
+    const size_t A_size = tile_m * tile_k * tile_batch * sizeof(T);
+    auto A_tmp =
+        allocate_memory_for_quarters<T>(A_size, 7, batch, m / 2, k / 2);
+    const size_t B_size = tile_n * tile_k * tile_batch * sizeof(T);
+    auto B_tmp =
+        allocate_memory_for_quarters<T>(B_size, 7, batch, k / 2, n / 2);
+    const size_t C_size = tile_n * tile_m * tile_batch * sizeof(T);
+    auto C_tmp =
+        allocate_memory_for_quarters<T>(C_size, 7, batch, m / 2, n / 2);
+
+    calculate_quater_sum<T, 1, 1, 2, 2>(batch, tile_batch, k, tile_k, m, tile_m,
+                                        transA, A, A_tmp[1]);
+    calculate_quater_sum<T, 2, 1, 2, 2>(batch, tile_batch, k, tile_k, m, tile_m,
+                                        transA, A, A_tmp[2]);
+    calculate_quater<T, 1, 1>(batch, tile_batch, k, tile_k, m, tile_m, transA,
+                              A, A_tmp[3]);
+    calculate_quater<T, 2, 2>(batch, tile_batch, k, tile_k, m, tile_m, transA,
+                              A, A_tmp[4]);
+    calculate_quater_sum<T, 1, 1, 1, 2>(batch, tile_batch, k, tile_k, m, tile_m,
+                                        transA, A, A_tmp[5]);
+    calculate_quater_sub<T, 2, 1, 1, 1>(batch, tile_batch, k, tile_k, m, tile_m,
+                                        transA, A, A_tmp[6]);
+    calculate_quater_sub<T, 1, 2, 2, 2>(batch, tile_batch, k, tile_k, m, tile_m,
+                                        transA, A, A_tmp[7]);
+
+    calculate_quater_sum<T, 1, 1, 2, 2>(batch, tile_batch, n, tile_n, k, tile_k,
+                                        transB, B, B_tmp[1]);
+    calculate_quater<T, 1, 1>(batch, tile_batch, n, tile_n, k, tile_k, transB,
+                              B, B_tmp[2]);
+    calculate_quater_sub<T, 1, 2, 2, 2>(batch, tile_batch, n, tile_n, k, tile_k,
+                                        transB, B, B_tmp[3]);
+    calculate_quater_sub<T, 2, 1, 1, 1>(batch, tile_batch, n, tile_n, k, tile_k,
+                                        transB, B, B_tmp[4]);
+    calculate_quater<T, 2, 2>(batch, tile_batch, n, tile_n, k, tile_k, transB,
+                              B, B_tmp[5]);
+    calculate_quater_sum<T, 1, 1, 1, 2>(batch, tile_batch, n, tile_n, k, tile_k,
+                                        transB, B, B_tmp[6]);
+    calculate_quater_sum<T, 2, 1, 2, 2>(batch, tile_batch, n, tile_n, k, tile_k,
+                                        transB, B, B_tmp[7]);
+
+    for(int s = 1; s <= 7; s++)
+    {
+        for(Index b = 0; b < batch; ++b)
+        {
+            for(Index j = 0; j < n / 2; ++j)
+            {
+                for(Index i = 0; i < m / 2; ++i)
+                {
+                    for(Index ij = 0; ij < k / 2; ++ij)
+                    {
+                        if(ij == 0)
+                        {
+                            starpu::gemm::submit<T, T_scal>(
+                                transA, transB, tile_m, tile_n, tile_k,
+                                tile_batch, alpha, A_tmp[s][b][i][ij],
+                                B_tmp[s][b][ij][j], zero, C_tmp[s][b][i][j],
+                                redux);
+                        }
+                        else
+                        {
+                            starpu::gemm::submit<T, T_scal>(
+                                transA, transB, tile_m, tile_n, tile_k,
+                                tile_batch, alpha, A_tmp[s][b][i][ij],
+                                B_tmp[s][b][ij][j], one, C_tmp[s][b][i][j],
+                                redux);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     for(Index b = 0; b < batch; ++b)
     {
-        for(Index j = 0; j < n; ++j)
+        for(Index j = 0; j < n / 2; ++j)
         {
-            for(Index i = 0; i < m; ++i)
+            for(Index i = 0; i < m / 2; ++i)
             {
-                Index C_tile_offset = (b*n+j)*m + i;
+                Index base_C_tile_offset = j * m + i + b * n * m,
+                      C_tile_offset = base_C_tile_offset;
                 auto C_tile_handle = C.get_tile_handle(C_tile_offset);
-                auto C_tile_traits = C.get_tile_traits(C_tile_offset);
-                int C_tile_rank = C_tile_handle.mpi_get_rank();
-                Index tile_m = C_tile_traits.matrix_shape[
-                    A.ndim-batch_ndim-ndim][0];
-                Index tile_batch = C_tile_traits.matrix_shape[
-                    C.ndim-batch_ndim][1];
-                Index tile_n = C_tile_traits.matrix_shape[
-                    A.ndim-batch_ndim-ndim][1] / tile_batch;
-                // initialize C(i,j,b) = a*opA(i,0,b)*opB(0,j,b) + b*C(i,j,b)
-                Index A_tile_offset = opA_stride[0]*i + b*m*k;
-                Index B_tile_offset = opB_stride[1]*j + b*n*k;
-                auto A_first_tile_handle = A.get_tile_handle(A_tile_offset);
-                auto B_first_tile_handle = B.get_tile_handle(B_tile_offset);
-                int A_first_tile_rank = A_first_tile_handle.mpi_get_rank();
-                int B_first_tile_rank = B_first_tile_handle.mpi_get_rank();
-                // Transfer first tile A on node with tile C
-                A_first_tile_handle.mpi_transfer(C_tile_rank, mpi_rank);
-                // Transfer first tile B on node with tile C
-                B_first_tile_handle.mpi_transfer(C_tile_rank, mpi_rank);
-                // Execute on node with tile C
-                if(mpi_rank == C_tile_rank)
-                {
-                    Index tile_k;
-                    auto A_first_tile_traits = A.get_tile_traits(
-                            A_tile_offset);
-                    switch(transA.value)
-                    {
-                        case TransOp::NoTrans:
-                            tile_k = A_first_tile_traits.matrix_shape[
-                                A.ndim-batch_ndim-ndim][1] / tile_batch;
-                            break;
-                            // This parameter was already checked
-                            //case TransOp::Trans:
-                        default:
-                            tile_k = A_first_tile_traits.matrix_shape[ndim][0];
-                            break;
-                    }
-                    starpu__strassen__submit<T, T_scal>(
-                        transA, transB, tile_m, tile_n, tile_k, tile_batch,
-                        alpha, A_first_tile_handle, B_first_tile_handle, beta,
-                        C_tile_handle, redux);
-                }
-                // all other l>0
-                for(Index l = 1; l < k; ++l)
-                {
-                    // accumulate C(i,j,b) = a*opA(i,l,b)*opB(l,j,b) + C(i,j,b)
-                    A_tile_offset += opA_stride[1];
-                    B_tile_offset += opB_stride[0];
-                    auto A_tile_handle = A.get_tile_handle(A_tile_offset);
-                    auto B_tile_handle = B.get_tile_handle(B_tile_offset);
-                    int A_tile_rank = A_tile_handle.mpi_get_rank();
-                    int B_tile_rank = B_tile_handle.mpi_get_rank();
-                    // Transfer tile A on node with tile C
-                    A_tile_handle.mpi_transfer(C_tile_rank, mpi_rank);
-                    // Transfer tile B on node with tile C
-                    B_tile_handle.mpi_transfer(C_tile_rank, mpi_rank);
-                    // Execute on node with tile C
-                    if(mpi_rank == C_tile_rank)
-                    {
-                        Index tile_k;
-                        auto A_tile_traits = A.get_tile_traits(A_tile_offset);
-                        switch(transA.value)
-                        {
-                            case TransOp::NoTrans:
-                                tile_k = A_tile_traits.matrix_shape[
-                                    A.ndim-batch_ndim-ndim][1] / tile_batch;
-                                break;
-                                // This parameter was already checked
-                                //case TransOp::Trans:
-                            default:
-                                tile_k = A_tile_traits.matrix_shape[ndim][0];
-                                break;
-                        }
-                        starpu::strassen::submit<T, T_scal>(transA, transB, tile_m,
-                                tile_n,
-                                tile_k, tile_batch, alpha, A_tile_handle,
-                                B_tile_handle, one, C_tile_handle, redux);
-                    }
-                }
-                // Flush cache for the output tile on every node
-                C_tile_handle.mpi_flush();
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[1][b][i][j], beta, C_tile_handle);
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[4][b][i][j], one, C_tile_handle);
+                starpu::add::submit<T>(tile_n * tile_m, -alpha,
+                                       C_tmp[5][b][i][j], one, C_tile_handle);
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[7][b][i][j], one, C_tile_handle);
+
+                C_tile_offset = base_C_tile_offset + (n / 2) * m;
+                C_tile_handle = C.get_tile_handle(C_tile_offset);
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[3][b][i][j], beta, C_tile_handle);
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[5][b][i][j], one, C_tile_handle);
+
+                C_tile_offset = base_C_tile_offset + (m / 2);
+                C_tile_handle = C.get_tile_handle(C_tile_offset);
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[2][b][i][j], beta, C_tile_handle);
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[4][b][i][j], one, C_tile_handle);
+
+                C_tile_offset = base_C_tile_offset + (n / 2) * m + (m / 2);
+                C_tile_handle = C.get_tile_handle(C_tile_offset);
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[1][b][i][j], beta, C_tile_handle);
+                starpu::add::submit<T>(tile_n * tile_m, -alpha,
+                                       C_tmp[2][b][i][j], one, C_tile_handle);
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[3][b][i][j], one, C_tile_handle);
+                starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                       C_tmp[6][b][i][j], one, C_tile_handle);
             }
         }
     }

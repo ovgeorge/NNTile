@@ -402,8 +402,8 @@ void _calculate_quater(
                 if(outside_i && Ij1 == 2 || outside_j && iJ1 == 2)
                 {
                     auto tile_handle = A.get_tile_handle(0);
-                    starpu::scal::submit<T>(tile_m * tile_k, zero, tile_handle,
-                                            quater[b][i][j]);
+                    starpu::scal::submit<T>(tile_m * tile_k * tile_batch, zero,
+                                            tile_handle, quater[b][i][j]);
                 }
                 else
                 {
@@ -414,8 +414,8 @@ void _calculate_quater(
                     auto tile_handle = A.get_tile_handle(tile_offset);
 
                     // Execute
-                    starpu::add::submit<T>(tile_m * tile_k, one, tile_handle,
-                                           zero, quater[b][i][j]);
+                    starpu::add::submit<T>(tile_m * tile_k * tile_batch, one,
+                                           tile_handle, zero, quater[b][i][j]);
                 }
 
                 if(weight == 0 || outside_i && Ij2 == 2 ||
@@ -426,8 +426,8 @@ void _calculate_quater(
                                     (Ij2 - 1) * opA_stride[0] * ((m + 1) / 2) +
                                     (iJ2 - 1) * opA_stride[1] * ((k + 1) / 2);
                 auto tile_handle = A.get_tile_handle(tile_offset);
-                starpu::add::submit<T>(tile_m * tile_k, w, tile_handle, one,
-                                       quater[b][i][j]);
+                starpu::add::submit<T>(tile_m * tile_k * tile_batch, w,
+                                       tile_handle, one, quater[b][i][j]);
 
                 // Flush cache for the output tile on every node
                 quater[b][m][k].mpi_flush();
@@ -630,16 +630,16 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
                 {
                     Index C_tile_offset = base_C_tile_offset;
                     auto C_tile_handle = C.get_tile_handle(C_tile_offset);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[1][b][i][j], beta,
                                            C_tile_handle);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[4][b][i][j], one,
                                            C_tile_handle);
-                    starpu::add::submit<T>(tile_n * tile_m, -alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, -alpha,
                                            C_tmp[5][b][i][j], one,
                                            C_tile_handle);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[7][b][i][j], one,
                                            C_tile_handle);
                 }
@@ -649,10 +649,10 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
                     Index C_tile_offset =
                         base_C_tile_offset + ((n + 1) / 2) * m;
                     auto C_tile_handle = C.get_tile_handle(C_tile_offset);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[3][b][i][j], beta,
                                            C_tile_handle);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[5][b][i][j], one,
                                            C_tile_handle);
                 }
@@ -661,10 +661,10 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
                 {
                     Index C_tile_offset = base_C_tile_offset + ((m + 1) / 2);
                     auto C_tile_handle = C.get_tile_handle(C_tile_offset);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[2][b][i][j], beta,
                                            C_tile_handle);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[4][b][i][j], one,
                                            C_tile_handle);
                 }
@@ -674,16 +674,16 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
                     Index C_tile_offset =
                         base_C_tile_offset + ((n + 1) / 2) * m + ((m + 1) / 2);
                     auto C_tile_handle = C.get_tile_handle(C_tile_offset);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[1][b][i][j], beta,
                                            C_tile_handle);
-                    starpu::add::submit<T>(tile_n * tile_m, -alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, -alpha,
                                            C_tmp[2][b][i][j], one,
                                            C_tile_handle);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[3][b][i][j], one,
                                            C_tile_handle);
-                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                    starpu::add::submit<T>(tile_n * tile_m * tile_batch, alpha,
                                            C_tmp[6][b][i][j], one,
                                            C_tile_handle);
                 }

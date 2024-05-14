@@ -583,7 +583,7 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
                         {
                             starpu::gemm::submit<T, T_scal>(
                                 transA, transB, tile_m, tile_n, tile_k,
-                                tile_batch, alpha, A_tmp[s][b][i][ij],
+                                tile_batch, one, A_tmp[s][b][i][ij],
                                 B_tmp[s][b][ij][j], zero, C_tmp[s][b][i][j],
                                 redux);
                         }
@@ -591,7 +591,7 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
                         {
                             starpu::gemm::submit<T, T_scal>(
                                 transA, transB, tile_m, tile_n, tile_k,
-                                tile_batch, alpha, A_tmp[s][b][i][ij],
+                                tile_batch, one, A_tmp[s][b][i][ij],
                                 B_tmp[s][b][ij][j], one, C_tmp[s][b][i][j],
                                 redux);
                         }

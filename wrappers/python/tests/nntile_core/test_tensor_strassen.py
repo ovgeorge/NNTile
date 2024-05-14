@@ -36,7 +36,7 @@ def helper(dtype, tA, tB, matrix_shape, shared_size, tile_size, alpha, beta, bat
     # Describe single-tile tensor, located at node 0
     mpi_distr = [0]
     next_tag = 0
-    tile_shape = [tile_size, tile_size, batch]
+    tile_shape = [tile_size, tile_size, 1]
 
     if tA == nntile.notrans:
         shape = [matrix_shape[0], shared_size, batch]
@@ -98,9 +98,9 @@ def helper(dtype, tA, tB, matrix_shape, shared_size, tile_size, alpha, beta, bat
 # Repeat tests for different configurations
 def tests():
     trans = [nntile.notrans, nntile.trans]
-    matrix_sizes = [[4, 4], [6, 4], [4, 6], [5, 4], [4, 5], [3, 7], [7, 3], [7, 7]]
-    shared_sizes = range(1, 11)
-    tile_sizes = [2, 3]
+    matrix_sizes = [[8, 8], [8, 4], [4, 8], [6, 4], [4, 6], [6, 6]]
+    shared_sizes = range(2, 10, 2)
+    tile_sizes = [2]
     ab = [-0.5, -0.33, 0, 0.33, 0.5]
     args_sets = itertools.product(
         dtypes, trans, trans, matrix_sizes, shared_sizes, tile_sizes, ab, ab

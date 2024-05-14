@@ -15,6 +15,7 @@
 #include "nntile/tensor/strassen.hh"
 #include "nntile/starpu/add.hh"
 #include "nntile/starpu/gemm.hh"
+#include "nntile/starpu/scal.hh"
 
 using nntile::starpu::Handle;
 
@@ -389,28 +390,42 @@ void _calculate_quater(
     // All per-tile starpu strassen calls shall appear here
     for(Index b = 0; b < batch; ++b)
     {
-        for(Index j = 0; j < k / 2; ++j)
+        for(Index j = 0; j < (k + 1) / 2; ++j)
         {
-            for(Index i = 0; i < m / 2; ++i)
+            for(Index i = 0; i < (m + 1) / 2; ++i)
             {
+                bool outside_i = (i == m / 2) && (m % 2 == 1);
+                bool outside_j = (j == k / 2) && (k % 2 == 1);
                 Index base_A_tile_offset =
                     opA_stride[0] * i + opA_stride[1] * j + b * m * k;
-                Index tile_offset = base_A_tile_offset +
-                                    (Ij1 - 1) * opA_stride[0] * (m / 2) +
-                                    (iJ1 - 1) * opA_stride[1] * (k / 2);
-                auto tile_handle = A.get_tile_handle(tile_offset);
 
-                // Execute
-                starpu::add::submit<T>(tile_m * tile_k, one, tile_handle, zero,
-                                       quater[b][i][j]);
+                if(outside_i && Ij1 == 2 || outside_j && iJ1 == 2)
+                {
+                    auto tile_handle = A.get_tile_handle(0);
+                    starpu::scal::submit<T>(tile_m * tile_k, zero, tile_handle,
+                                            quater[b][i][j]);
+                }
+                else
+                {
+                    Index tile_offset =
+                        base_A_tile_offset +
+                        (Ij1 - 1) * opA_stride[0] * ((m + 1) / 2) +
+                        (iJ1 - 1) * opA_stride[1] * ((k + 1) / 2);
+                    auto tile_handle = A.get_tile_handle(tile_offset);
 
-                if(weight == 0)
+                    // Execute
+                    starpu::add::submit<T>(tile_m * tile_k, one, tile_handle,
+                                           zero, quater[b][i][j]);
+                }
+
+                if(weight == 0 || outside_i && Ij2 == 2 ||
+                   outside_j && iJ2 == 2)
                     continue;
 
-                tile_offset = base_A_tile_offset +
-                              (Ij2 - 1) * opA_stride[0] * (m / 2) +
-                              (iJ2 - 1) * opA_stride[1] * (k / 2);
-                tile_handle = A.get_tile_handle(tile_offset);
+                Index tile_offset = base_A_tile_offset +
+                                    (Ij2 - 1) * opA_stride[0] * ((m + 1) / 2) +
+                                    (iJ2 - 1) * opA_stride[1] * ((k + 1) / 2);
+                auto tile_handle = A.get_tile_handle(tile_offset);
                 starpu::add::submit<T>(tile_m * tile_k, w, tile_handle, one,
                                        quater[b][i][j]);
 
@@ -530,14 +545,14 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
     }
 
     const size_t A_size = tile_m * tile_k * tile_batch * sizeof(T);
-    auto A_tmp =
-        allocate_memory_for_quarters<T>(A_size, 7, batch, m / 2, k / 2);
+    auto A_tmp = allocate_memory_for_quarters<T>(A_size, 7, batch, (m + 1) / 2,
+                                                 (k + 1) / 2);
     const size_t B_size = tile_n * tile_k * tile_batch * sizeof(T);
-    auto B_tmp =
-        allocate_memory_for_quarters<T>(B_size, 7, batch, k / 2, n / 2);
+    auto B_tmp = allocate_memory_for_quarters<T>(B_size, 7, batch, (k + 1) / 2,
+                                                 (n + 1) / 2);
     const size_t C_size = tile_n * tile_m * tile_batch * sizeof(T);
-    auto C_tmp =
-        allocate_memory_for_quarters<T>(C_size, 7, batch, m / 2, n / 2);
+    auto C_tmp = allocate_memory_for_quarters<T>(C_size, 7, batch, (m + 1) / 2,
+                                                 (n + 1) / 2);
 
     calculate_quater_sum<T, 1, 1, 2, 2>(batch, tile_batch, k, tile_k, m, tile_m,
                                         transA, A, A_tmp[1]);
@@ -573,11 +588,11 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
     {
         for(Index b = 0; b < batch; ++b)
         {
-            for(Index j = 0; j < n / 2; ++j)
+            for(Index j = 0; j < (n + 1) / 2; ++j)
             {
-                for(Index i = 0; i < m / 2; ++i)
+                for(Index i = 0; i < (m + 1) / 2; ++i)
                 {
-                    for(Index ij = 0; ij < k / 2; ++ij)
+                    for(Index ij = 0; ij < (k + 1) / 2; ++ij)
                     {
                         if(ij == 0)
                         {
@@ -603,46 +618,75 @@ void strassen_async(T_scal alpha, const TransOp &transA, const Tensor<T> &A,
 
     for(Index b = 0; b < batch; ++b)
     {
-        for(Index j = 0; j < n / 2; ++j)
+        for(Index j = 0; j < (n + 1) / 2; ++j)
         {
-            for(Index i = 0; i < m / 2; ++i)
+            for(Index i = 0; i < (m + 1) / 2; ++i)
             {
-                Index base_C_tile_offset = j * m + i + b * n * m,
-                      C_tile_offset = base_C_tile_offset;
-                auto C_tile_handle = C.get_tile_handle(C_tile_offset);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[1][b][i][j], beta, C_tile_handle);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[4][b][i][j], one, C_tile_handle);
-                starpu::add::submit<T>(tile_n * tile_m, -alpha,
-                                       C_tmp[5][b][i][j], one, C_tile_handle);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[7][b][i][j], one, C_tile_handle);
+                bool outside_i = (i == m / 2) && (m % 2 == 1);
+                bool outside_j = (j == n / 2) && (n % 2 == 1);
+                Index base_C_tile_offset = j * m + i + b * n * m;
 
-                C_tile_offset = base_C_tile_offset + (n / 2) * m;
-                C_tile_handle = C.get_tile_handle(C_tile_offset);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[3][b][i][j], beta, C_tile_handle);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[5][b][i][j], one, C_tile_handle);
+                if(true)
+                {
+                    Index C_tile_offset = base_C_tile_offset;
+                    auto C_tile_handle = C.get_tile_handle(C_tile_offset);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[1][b][i][j], beta,
+                                           C_tile_handle);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[4][b][i][j], one,
+                                           C_tile_handle);
+                    starpu::add::submit<T>(tile_n * tile_m, -alpha,
+                                           C_tmp[5][b][i][j], one,
+                                           C_tile_handle);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[7][b][i][j], one,
+                                           C_tile_handle);
+                }
 
-                C_tile_offset = base_C_tile_offset + (m / 2);
-                C_tile_handle = C.get_tile_handle(C_tile_offset);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[2][b][i][j], beta, C_tile_handle);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[4][b][i][j], one, C_tile_handle);
+                if(!outside_j)
+                {
+                    Index C_tile_offset =
+                        base_C_tile_offset + ((n + 1) / 2) * m;
+                    auto C_tile_handle = C.get_tile_handle(C_tile_offset);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[3][b][i][j], beta,
+                                           C_tile_handle);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[5][b][i][j], one,
+                                           C_tile_handle);
+                }
 
-                C_tile_offset = base_C_tile_offset + (n / 2) * m + (m / 2);
-                C_tile_handle = C.get_tile_handle(C_tile_offset);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[1][b][i][j], beta, C_tile_handle);
-                starpu::add::submit<T>(tile_n * tile_m, -alpha,
-                                       C_tmp[2][b][i][j], one, C_tile_handle);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[3][b][i][j], one, C_tile_handle);
-                starpu::add::submit<T>(tile_n * tile_m, alpha,
-                                       C_tmp[6][b][i][j], one, C_tile_handle);
+                if(!outside_i)
+                {
+                    Index C_tile_offset = base_C_tile_offset + ((m + 1) / 2);
+                    auto C_tile_handle = C.get_tile_handle(C_tile_offset);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[2][b][i][j], beta,
+                                           C_tile_handle);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[4][b][i][j], one,
+                                           C_tile_handle);
+                }
+
+                if(!outside_i && !outside_j)
+                {
+                    Index C_tile_offset =
+                        base_C_tile_offset + ((n + 1) / 2) * m + ((m + 1) / 2);
+                    auto C_tile_handle = C.get_tile_handle(C_tile_offset);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[1][b][i][j], beta,
+                                           C_tile_handle);
+                    starpu::add::submit<T>(tile_n * tile_m, -alpha,
+                                           C_tmp[2][b][i][j], one,
+                                           C_tile_handle);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[3][b][i][j], one,
+                                           C_tile_handle);
+                    starpu::add::submit<T>(tile_n * tile_m, alpha,
+                                           C_tmp[6][b][i][j], one,
+                                           C_tile_handle);
+                }
             }
         }
     }

@@ -344,6 +344,7 @@ set(TENSOR_SRC
     "tensor/silu_backward.cc"
     "tensor/rope.cc"
     "tensor/rope_backward.cc"
+    "tensor/strassen.cc"
     )
 
 set(LAYER_SRC

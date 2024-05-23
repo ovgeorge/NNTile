@@ -395,6 +395,7 @@ set(TENSOR_HDR
     "nntile/tensor/transpose.hh"
     "nntile/tensor/rope.hh"
     "nntile/tensor/rope_backward.hh"
+    "nntile/tensor/strassen.hh"
     )
 
 set(LAYER_HDR

@@ -49,11 +49,10 @@ void cpu(Index src_n, Index src_m, Index src_offset_n, Index src_offset_m,
                     Index dst_2 = i2 + j2;
                     if(dst_2 < dst_offset_m || dst_offset_m + dst_m <= dst_2)
                         continue;
-                    dst_1 -= dst_offset_n;
-                    dst_2 -= dst_offset_m;
-                    dst[dst_1 * dst_n + dst_2] +=
-                        src[i1 * src_n + i2] * kernel[j1 * kernel_n + j2];
-                }
+                    dst[(dst_1 - dst_offset_n) * dst_n + (dst_2 - dst_offset_m)] +=
+                        src[(i1 - src_offset_n) * src_n + (i2 - src_offset_m)] *
+                        kernel[(j1 - kernel_offset_n) * kernel_n + (j2 - kernel_offset_m)];
+				}
             }
         }
     }

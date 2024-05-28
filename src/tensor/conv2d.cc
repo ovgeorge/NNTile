@@ -70,15 +70,8 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
     {
         for(Index dst_j = 0; dst_j < dst_m; ++dst_j)
         {
-            Index dst_index = dst_j * dst_n + 0 * dst_n * dst_m;
+            Index dst_index = dst_i + dst_j * dst_n + 0 * dst_n * dst_m;
             auto dst_tile_handle = dst.get_tile_handle(dst_index);
-            Index dst_tile_n_current =
-                dst.get_tile_traits(dst_index)
-                    .matrix_shape[dst.ndim - batch_ndim - 1][0];
-            Index dst_tile_m_current =
-                dst.get_tile_traits(dst_index)
-                    .matrix_shape[dst.ndim - batch_ndim - 1][1] /
-                batch;
             starpu::clear::submit(dst_tile_handle);
         }
     }
@@ -87,7 +80,7 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
     {
         for(Index src_j = 0; src_j < src_m; ++src_j)
         {
-            Index src_index = src_j * src_n + 0 * src_n * src_m;
+            Index src_index = src_i + src_j * src_n + 0 * src_n * src_m;
             auto src_tile_handle = src.get_tile_handle(src_index);
             Index src_tile_n_current =
                 src.get_tile_traits(src_index)
@@ -103,7 +96,7 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
             {
                 for(Index kernel_j = 0; kernel_j < kernel_m; ++kernel_j)
                 {
-                    Index kernel_index =
+                    Index kernel_index = kernel_i + 
                         kernel_j * kernel_n + 0 * kernel_n * kernel_m;
                     auto kernel_tile_handle =
                         kernel.get_tile_handle(kernel_index);
@@ -121,7 +114,7 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
                     {
                         for(Index dst_j = 0; dst_j < dst_m; ++dst_j)
                         {
-                            Index dst_index = dst_j * dst_n + 0 * dst_n * dst_m;
+                            Index dst_index = dst_i + dst_j * dst_n + 0 * dst_n * dst_m;
                             auto dst_tile_handle =
                                 dst.get_tile_handle(dst_index);
                             Index dst_tile_n_current =
@@ -136,11 +129,11 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
                             Index dst_offset_m = dst_j * dst_tile_m;
 
                             starpu::conv2d::submit<T>(
-                                src_n, src_m, kernel_offset_n, kernel_offset_m,
-                                src_tile_handle, kernel_n, kernel_m,
+                                src_tile_n, src_tile_m, src_offset_n, src_offset_m,
+                                src_tile_handle, kernel_tile_n, kernel_tile_m,
                                 kernel_offset_n, kernel_offset_m,
-                                kernel_tile_handle, dst_n, dst_m,
-                                kernel_offset_n, kernel_offset_m,
+                                kernel_tile_handle, dst_tile_n, dst_tile_m,
+                                dst_offset_n, dst_offset_m,
                                 dst_tile_handle);
                         }
                     }

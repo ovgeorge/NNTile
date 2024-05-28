@@ -28,18 +28,18 @@ namespace conv2d
 //! Structure for arguments
 struct args_t
 {
-    Index src_n;
-    Index src_m;
-    Index src_offset_n;
-    Index src_offset_m;
-    Index kernel_n;
-    Index kernel_m;
-    Index kernel_offset_n;
-    Index kernel_offset_m;
-    Index dst_n;
-    Index dst_m;
-    Index dst_offset_n;
-    Index dst_offset_m;
+    Index src_tile_n;
+	Index src_tile_m;
+	Index src_offset_n;
+	Index src_offset_m;
+	Index kernel_tile_n;
+	Index kernel_tile_m;
+	Index kernel_offset_n;
+	Index kernel_offset_m;
+	Index dst_tile_n;
+	Index dst_tile_m;
+	Index dst_offset_n;
+	Index dst_offset_m;
 };
 
 // StarPU wrapper for kernel::conv2d::cpu<T>
@@ -81,11 +81,10 @@ void restrict_where(uint32_t where);
 
 void restore_where();
 
-template <typename T>
-void submit(Index src_n, Index src_m, Index src_offset_n, Index src_offset_m,
-            Handle src, Index kernel_n, Index kernel_m, Index kernel_offset_n,
-            Index kernel_offset_m, Handle kernel, Index dst_n, Index dst_m,
-            Index dst_offset_n, Index dst_offset_m, Handle dst);
+template<typename T>
+void submit(Index src_tile_n, Index src_tile_m, Index src_offset_n, Index src_offset_m, Handle src,
+			Index kernel_tile_n, Index kernel_tile_m, Index kernel_offset_n, Index kernel_offset_m, Handle kernel,
+			Index dst_tile_n, Index dst_tile_m, Index dst_offset_n, Index dst_offset_m, Handle dst);
 
 } // namespace conv2d
 } // namespace starpu

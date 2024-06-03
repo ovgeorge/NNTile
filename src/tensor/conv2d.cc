@@ -129,13 +129,24 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
                             Index dst_offset_n = dst_i * dst_tile_n;
                             Index dst_offset_m = dst_j * dst_tile_m;
 
+                            Index offset_n =
+                                dst_offset_n - src_offset_n - kernel_offset_n;
+                            Index offset_m =
+                                dst_offset_m - src_offset_m - kernel_offset_m;
+
+                            if(src_tile_n_current + kernel_tile_n_current - 2 <
+                                   offset_n ||
+                               offset_n + dst_tile_n_current - 1 < 0 ||
+                               src_tile_m_current + kernel_tile_m_current - 2 <
+                                   offset_m ||
+                               offset_m + dst_tile_m_current - 1 < 0)
+                                continue;
                             starpu::conv2d::submit<T>(
-                                src_tile_n, src_tile_m, src_offset_n, src_offset_m,
-                                src_tile_handle, kernel_tile_n, kernel_tile_m,
-                                kernel_offset_n, kernel_offset_m,
-                                kernel_tile_handle, dst_tile_n, dst_tile_m,
-                                dst_offset_n, dst_offset_m,
-                                dst_tile_handle);
+                                offset_n, offset_m, src_tile_n_current,
+                                src_tile_m_current, src_tile_handle,
+                                kernel_tile_n_current, kernel_tile_m_current,
+                                kernel_tile_handle, dst_tile_n_current,
+                                dst_tile_m_current, dst_tile_handle);
                         }
                     }
                 }

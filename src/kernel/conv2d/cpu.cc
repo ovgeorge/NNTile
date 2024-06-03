@@ -19,10 +19,9 @@ namespace kernel {
 namespace conv2d {
 
 template <typename T>
-void cpu(Index src_n, Index src_m, Index src_offset_n, Index src_offset_m,
-         const T *src, Index kernel_n, Index kernel_m, Index kernel_offset_n,
-         Index kernel_offset_m, const T *kernel, Index dst_n, Index dst_m,
-         Index dst_offset_n, Index dst_offset_m, T *dst) noexcept
+void cpu(Index offset_n, Index offset_m, Index src_n, Index src_m, const T *src,
+         Index kernel_n, Index kernel_m, const T *kernel, Index dst_n,
+         Index dst_m, T *dst) noexcept
 //! Compute full discrete linear convolution of two 2-dimensional arrays on
 //! CPU.
 /*!@param[in] nx: Size of the first axis of src array
@@ -34,44 +33,38 @@ void cpu(Index src_n, Index src_m, Index src_offset_n, Index src_offset_m,
  * @param[out] dst: Output contiguous (nx+my)-by-(ny+my) array
  * */
 {
-    for(Index i1 = src_offset_n; i1 < src_offset_n + src_n; ++i1)
+    for(Index i1 = 0; i1 < src_n; ++i1)
     {
-        for(Index j1 = kernel_offset_n; j1 < kernel_offset_n + kernel_n; ++j1)
+        for(Index j1 = 0; j1 < kernel_n; ++j1)
         {
             Index dst_1 = i1 + j1;
-            if(dst_1 < dst_offset_n || dst_offset_n + dst_n <= dst_1)
+            if(dst_1 < offset_n || offset_n + dst_n <= dst_1)
                 continue;
-            for(Index i2 = src_offset_m; i2 < src_offset_m + src_m; ++i2)
+            for(Index i2 = 0; i2 < src_m; ++i2)
             {
-                for(Index j2 = kernel_offset_m; j2 < kernel_offset_m + kernel_m;
-                    ++j2)
+                for(Index j2 = 0; j2 < kernel_m; ++j2)
                 {
                     Index dst_2 = i2 + j2;
-                    if(dst_2 < dst_offset_m || dst_offset_m + dst_m <= dst_2)
+                    if(dst_2 < offset_m || offset_m + dst_m <= dst_2)
                         continue;
-                    dst[(dst_1 - dst_offset_n) * dst_n + (dst_2 - dst_offset_m)] +=
-                        src[(i1 - src_offset_n) * src_n + (i2 - src_offset_m)] *
-                        kernel[(j1 - kernel_offset_n) * kernel_n + (j2 - kernel_offset_m)];
-				}
+                    dst[(dst_1 - offset_n) * dst_m + (dst_2 - offset_m)] +=
+                        src[i1 * src_m + i2] * kernel[j1 * kernel_m + j2];
+                }
             }
         }
     }
 }
 
 // Explicit instantiation
-template void cpu<fp32_t>(Index src_n, Index src_m, Index src_offset_n,
-                          Index src_offset_m, const fp32_t *src, Index kernel_n,
-                          Index kernel_m, Index kernel_offset_n,
-                          Index kernel_offset_m, const fp32_t *kernel,
-                          Index dst_n, Index dst_m, Index dst_offset_n,
-                          Index dst_offset_m, fp32_t *dst) noexcept;
+template void cpu<fp32_t>(Index offset_n, Index offset_m, Index src_n,
+                          Index src_m, const fp32_t *src, Index kernel_n,
+                          Index kernel_m, const fp32_t *kernel, Index dst_n,
+                          Index dst_m, fp32_t *dst) noexcept;
 
-template void cpu<fp64_t>(Index src_n, Index src_m, Index src_offset_n,
-                          Index src_offset_m, const fp64_t *src, Index kernel_n,
-                          Index kernel_m, Index kernel_offset_n,
-                          Index kernel_offset_m, const fp64_t *kernel,
-                          Index dst_n, Index dst_m, Index dst_offset_n,
-                          Index dst_offset_m, fp64_t *dst) noexcept;
+template void cpu<fp64_t>(Index offset_n, Index offset_m, Index src_n,
+                          Index src_m, const fp64_t *src, Index kernel_n,
+                          Index kernel_m, const fp64_t *kernel, Index dst_n,
+                          Index dst_m, fp64_t *dst) noexcept;
 
 }  // namespace conv2d
 }  // namespace kernel

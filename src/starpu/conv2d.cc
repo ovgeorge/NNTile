@@ -37,9 +37,10 @@ void cpu(void *buffers[], void *cl_args)
     const T *kernel = interfaces[1]->get_ptr<T>();
     T *dst = interfaces[2]->get_ptr<T>();
     // Launch kernel
-    kernel::conv2d::cpu<T>(args->src_n, args->src_m, args->src_offset_n, args->src_offset_m, src,
-		 args->kernel_n, args->kernel_m, args->kernel_offset_n, args->kernel_offset_m, kernel,
-		 args->dst_n, args->dst_m, args->dst_offset_n, args->dst_offset_m, dst);
+    kernel::conv2d::cpu<T>(args->offset_n, args->offset_m, args->batch,
+                           args->src_n, args->src_m, src, args->kernel_n,
+                           args->kernel_m, kernel, args->dst_n, args->dst_m,
+                           dst);
 }
 
 #ifdef NNTILE_USE_CUDA
@@ -115,11 +116,11 @@ void restore_where()
     codelet_fp64.restore_where();
 }
 
-template<typename T>
-void submit(Index src_tile_n, Index src_tile_m, Index src_offset_n, Index src_offset_m, Handle src,
-			Index kernel_tile_n, Index kernel_tile_m, Index kernel_offset_n, Index kernel_offset_m, Handle kernel,
-			Index dst_tile_n, Index dst_tile_m, Index dst_offset_n, Index dst_offset_m, Handle dst)
-//! Insert conv2d tas_tilek into StarPU_tile pool of tasks
+template <typename T>
+void submit(Index offset_n, Index offset_m, Index src_n, Index src_m,
+            Handle src, Index kernel_n, Index kernel_m, Handle kernel,
+            Index dst_n, Index dst_m, Handle dst)
+//! Insert conv2d task into StarPU pool of tasks
 /*! No argument checking is performed. All the inputs are packed and passed to
  * starpu_task_insert() function. If task submission fails, this routines
  * throws an std::runtime_error() exception.
@@ -127,19 +128,15 @@ void submit(Index src_tile_n, Index src_tile_m, Index src_offset_n, Index src_of
 {
     // Codelet arguments
     args_t *args = (args_t *)std::malloc(sizeof(*args));
-    args->src_tile_n = src_tile_n;
-    args->src_tile_m = src_tile_m;
-    args->src_offset_n = src_offset_n;
-    args->src_offset_m = src_offset_m;
-    args->kernel_tile_n = kernel_tile_n;
-    args->kernel_tile_m = kernel_tile_m;
-    args->kernel_offset_n = kernel_offset_n;
-    args->kernel_offset_m = kernel_offset_m;
-    args->dst_tile_n = dst_tile_n;
-    args->dst_tile_m = dst_tile_m;
-    args->dst_offset_n = dst_offset_n;
-    args->dst_offset_m = dst_offset_m;
-    fp64_t nflops = src_tile_n*src_tile_m*dst_tile_n*dst_tile_m;
+    args->offset_n = offset_n;
+    args->offset_m = offset_m;
+    args->src_n = src_n;
+    args->src_m = src_m;
+    args->kernel_n = kernel_n;
+    args->kernel_m = kernel_m;
+    args->dst_n = dst_n;
+    args->dst_m = dst_m;
+    fp64_t nflops = src_n * src_m * dst_n * dst_m * batch;
     // Submit task
     int ret = starpu_task_insert(codelet<T>(),
             STARPU_R, static_cast<starpu_data_handle_t>(src),
@@ -156,15 +153,15 @@ void submit(Index src_tile_n, Index src_tile_m, Index src_offset_n, Index src_of
 }
 
 // Explicit instantiation
-template
-void submit<fp32_t>(Index src_tile_n, Index src_tile_m, Index src_offset_n, Index src_offset_m, Handle src,
-			Index kernel_tile_n, Index kernel_tile_m, Index kernel_offset_n, Index kernel_offset_m, Handle kernel,
-			Index dst_tile_n, Index dst_tile_m, Index dst_offset_n, Index dst_offset_m, Handle dst);
+template void submit<fp32_t>(Index offset_n, Index offset_m, Index src_n,
+                             Index src_m, Handle src, Index kernel_n,
+                             Index kernel_m, Handle kernel, Index dst_n,
+                             Index dst_m, Handle dst);
 
-template
-void submit<fp64_t>(Index src_tile_n, Index src_tile_m, Index src_offset_n, Index src_offset_m, Handle src,
-			Index kernel_tile_n, Index kernel_tile_m, Index kernel_offset_n, Index kernel_offset_m, Handle kernel,
-			Index dst_tile_n, Index dst_tile_m, Index dst_offset_n, Index dst_offset_m, Handle dst);
+template void submit<fp64_t>(Index offset_n, Index offset_m, Index src_n,
+                             Index src_m, Handle src, Index kernel_n,
+                             Index kernel_m, Handle kernel, Index dst_n,
+                             Index dst_m, Handle dst);
 
 } // namespace conv2d
 } // namespace starpu

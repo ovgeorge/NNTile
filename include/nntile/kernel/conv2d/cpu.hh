@@ -21,10 +21,9 @@ namespace kernel {
 namespace conv2d {
 
 template <typename T>
-void cpu(Index src_n, Index src_m, Index src_offset_n, Index src_offset_m,
-         const T *src, Index kernel_n, Index kernel_m, Index kernel_offset_n,
-         Index kernel_offset_m, const T *kernel, Index dst_n, Index dst_m,
-         Index dst_offset_n, Index dst_offset_m, T *dst) noexcept;
+void cpu(Index src_offset_n, Index src_offset_m, Index src_n, Index src_m,
+         const T *src, Index kernel_n, Index kernel_m, const T *kernel,
+         Index dst_n, Index dst_m, T *dst) noexcept;
 
 }  // namespace conv2d
 }  // namespace kernel

@@ -13,6 +13,7 @@
  * */
 
 #include "nntile/tensor/conv2d.hh"
+#include "nntile/starpu/clear.hh"
 #include "nntile/starpu/conv2d.hh"
 
 namespace nntile

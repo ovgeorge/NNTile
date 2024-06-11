@@ -86,6 +86,7 @@
 #include <nntile/starpu/adam_step.hh>
 #include <nntile/starpu/adamw_step.hh>
 #include <nntile/starpu/transpose.hh>
+#include <nntile/starpu/conv2d.hh>
 
 namespace nntile
 {
@@ -164,6 +165,7 @@ void init()
     adam_step::init();
     adamw_step::init();
     transpose::init();
+    conv2d::init();
 }
 
 // Restrict StarPU codelets to certain computational units
@@ -235,6 +237,7 @@ void restrict_where(uint32_t where)
     adam_step::restrict_where(where);
     adamw_step::restrict_where(where);
     transpose::restrict_where(where);
+    conv2d::restrict_where(where);
 }
 
 // Restore computational units for StarPU codelets
@@ -306,6 +309,7 @@ void restore_where()
     adam_step::restore_where();
     adamw_step::restore_where();
     transpose::restore_where();
+    conv2d::restore_where();
 }
 
 } // namespace starpu

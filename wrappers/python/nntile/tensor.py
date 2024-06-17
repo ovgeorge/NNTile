@@ -820,3 +820,16 @@ def transpose_async(alpha: float, src: Tensor, dst: Tensor, ndim: int) -> None:
     else:
         raise TypeError
 
+# Wrapper for multiprecision conv2d
+def conv2d_async(src: Tensor, kernel: Tensor, dst: Tensor) -> None:
+    if type(dst) is not type(src):
+        raise TypeError
+    if type(dst) is not type(kernel):
+        raise TypeError
+    if type(dst) is core_tensor.Tensor_fp32:
+        core_tensor.conv2d_async_fp32(src, kernel, dst)
+    elif type(x) is core_tensor.Tensor_fp64:
+        core_tensor.conv2d_async_fp64(src, kernel, dst)
+    else:
+        raise TypeError
+

@@ -327,6 +327,7 @@ set(TENSOR_SRC
     "tensor/adam_step.cc"
     "tensor/adamw_step.cc"
     "tensor/transpose.cc"
+    "tensor/conv2d.cc"
     )
 
 set(LAYER_SRC

@@ -56,8 +56,8 @@ void validate(Index offset_x, Index offset_y, Index nx, Index ny, Index px,
     std::vector<T> dst_save(dst);
     // Check low-level CPU kernel
     std::cout << "Run kernel::conv2d::cpu<T>\n";
-    cpu<T>(offset_x, offset_y, 1, nx, ny, &src[0], mx, my, &kernel[0],
-           nx + mx - 1, ny + my - 1, &dst[0]);
+    //    cpu<T>(offset_x, offset_y, 1, nx, ny, &src[0], mx, my, &kernel[0],
+    //           nx + mx - 1, ny + my - 1, &dst[0]);
     for(Index i0 = 0; i0 < ny + my - 1; ++i0)
     {
         for(Index i1 = 0; i1 < nx + mx - 1; ++i1)

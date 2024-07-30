@@ -50,15 +50,15 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
         throw std::runtime_error("src.ndim != dst.ndim");
     }
     // Check shapes of tensors
-    if(dst.shape[0] != src.shape[0] + kernel.shape[0] - 1 - 2 * padding_m)
+    if(dst.shape[0] != src.shape[0] - kernel.shape[0] + 1 + 2 * padding_m)
     {
-        throw std::runtime_error("dst.shape[0] != src.shape[0] + "
-                                 "kernel.shape[0] - 1 - 2 * padding_n");
+        throw std::runtime_error("dst.shape[0] != src.shape[0] - "
+                                 "kernel.shape[0] + 1 + 2 * padding_n");
     }
-    if(dst.shape[1] != src.shape[1] + kernel.shape[1] - 1 - 2 * padding_n)
+    if(dst.shape[1] != src.shape[1] - kernel.shape[1] + 1 + 2 * padding_n)
     {
-        throw std::runtime_error("dst.shape[1] != src.shape[1] + "
-                                 "kernel.shape[1] - 1 - 2 * padding_m");
+        throw std::runtime_error("dst.shape[1] != src.shape[1] - "
+                                 "kernel.shape[1] + 1 + 2 * padding_m");
     }
 
     Index batch = src.grid.matrix_shape[src.ndim - batch_ndim][1];
@@ -103,28 +103,10 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
                 Index tile_ic_current =
                     src.get_tile_traits(ic * src_n * src_m).matrix_shape[3][0] /
                     src.get_tile_traits(ic * src_n * src_m).matrix_shape[2][0];
-                Index padding_n_current = padding_n;
-                Index limit_n_current = src.shape[1] - padding_n;
                 for(Index src_i = 0; src_i < src_n; ++src_i)
                 {
-                    if(padding_n_current > src_tile_n)
-                    {
-                        // Ignoring size differences in tiles
-                        padding_n_current -= src_tile_n;
-                        limit_n_current -= src_tile_n;
-                        continue;
-                    }
-                    Index padding_m_current = padding_m;
-                    Index limit_m_current = src.shape[0] - padding_m;
                     for(Index src_j = 0; src_j < src_m; ++src_j)
                     {
-                        if(padding_m_current > src_tile_m)
-                        {
-                            // Ignoring size differences in tiles
-                            padding_m_current -= src_tile_m;
-                            limit_m_current -= src_tile_m;
-                            continue;
-                        }
                         Index src_index = src_j + src_i * src_m +
                                           ic * src_n * src_m +
                                           b * src_n * src_m * in_channels;
@@ -138,12 +120,8 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
                         Index src_tile_n_current =
                             src.get_tile_traits(src_index).matrix_shape[2][0] /
                             src_tile_m_current;
-                        Index src_offset_n = src_i * src_tile_n - padding_n;
-                        if(src_offset_n < 0)
-                            src_offset_n = 0;
-                        Index src_offset_m = src_j * src_tile_m - padding_m;
-                        if(src_offset_m < 0)
-                            src_offset_m = 0;
+                        Index src_offset_n = src_i * src_tile_n;
+                        Index src_offset_m = src_j * src_tile_m;
 
                         for(Index kernel_i = 0; kernel_i < kernel_n; ++kernel_i)
                         {
@@ -189,34 +167,19 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
                                         Index dst_offset_n = dst_i * dst_tile_n;
                                         Index dst_offset_m = dst_j * dst_tile_m;
 
-                                        Index offset_n = dst_offset_n -
-                                                         src_offset_n -
-                                                         kernel_offset_n;
-                                        Index offset_m = dst_offset_m -
-                                                         src_offset_m -
-                                                         kernel_offset_m;
+                                        Index offset_n =
+                                            dst_offset_n - src_offset_n -
+                                            padding_n + kernel_offset_n;
+                                        Index offset_m =
+                                            dst_offset_m - src_offset_m -
+                                            padding_m + kernel_offset_m;
 
-                                        if(src_tile_n_current +
-                                                   kernel_tile_n_current - 2 <
-                                               offset_n ||
-                                           offset_n + dst_tile_n_current - 1 <
-                                               0 ||
-                                           src_tile_m_current +
-                                                   kernel_tile_m_current - 2 <
-                                               offset_m ||
-                                           offset_m + dst_tile_m_current - 1 <
-                                               0)
-                                            continue;
                                         {
                                             starpu::conv2d::submit<T>(
                                                 offset_n, offset_m,
                                                 tile_batch_current,
                                                 tile_oc_current,
                                                 tile_ic_current,
-                                                padding_n_current,
-                                                limit_n_current,
-                                                padding_m_current,
-                                                limit_m_current,
                                                 src_tile_n_current,
                                                 src_tile_m_current,
                                                 src_tile_handle,
@@ -231,11 +194,7 @@ void conv2d_async(const Tensor<T> &src, const Tensor<T> &kernel,
                                 }
                             }
                         }
-                        padding_m_current -= src_tile_m;
-                        limit_m_current -= src_tile_m;
                     }
-                    padding_n_current -= src_tile_n;
-                    limit_n_current -= src_tile_n;
                 }
             }
         }

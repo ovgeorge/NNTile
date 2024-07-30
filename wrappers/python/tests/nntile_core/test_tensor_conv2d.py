@@ -75,6 +75,12 @@ def test_conv2d(
 ):
     next_tag = 0
 
+    if (
+        shape_A[0] + 2 * padding[0] < shape_B[0]
+        or shape_A[1] + 2 * padding[1] < shape_B[1]
+    ):
+        return
+
     shape = [*shape_A, in_channels, batch]
     tile_shape = [*shape_A_tile, in_channels_tile, batch_tile]
     traits = nntile.tensor.TensorTraits(shape, tile_shape)
@@ -100,8 +106,8 @@ def test_conv2d(
     next_tag = B.next_tag
 
     shape = [
-        shape_A[0] + shape_B[0] - 1 - 2 * padding[0],
-        shape_A[1] + shape_B[1] - 1 - 2 * padding[1],
+        shape_A[0] - shape_B[0] + 1 + 2 * padding[0],
+        shape_A[1] - shape_B[1] + 1 + 2 * padding[1],
         out_channels,
         batch,
     ]
@@ -136,12 +142,12 @@ def test_conv2d(
             src_C[..., oc, b] = 0
             for ic in range(in_channels):
                 termA = src_A[..., ic, b]
-                if padding[0] != 0:
-                    termA = termA[padding[0] : -padding[0], ...]
-                if padding[1] != 0:
-                    termA = termA[:, padding[1] : -padding[1], ...]
+                termA = np.pad(
+                    termA, ((padding[0], padding[0]), (padding[1], padding[1]))
+                )
                 termB = src_B[..., oc, ic]
-                src_C[..., oc, b] += scipy.signal.convolve2d(termA, termB)
+                src_C[..., oc, b] += scipy.signal.correlate(termA, termB, mode="valid")
+
             # Check if results are almost equal
             value = src_C[..., oc, b]
             result = dst_C[..., oc, b]

@@ -34,11 +34,10 @@ template <typename T> void cpu(void *buffers[], void *cl_args) noexcept
     const T *kernel = interfaces[1]->get_ptr<T>();
     T *dst = interfaces[2]->get_ptr<T>();
     // Launch kernel
-    kernel::conv2d::cpu<T>(
-        args->offset_n, args->offset_m, args->batch, args->out_channels,
-        args->in_channels, args->padding_n, args->limit_n, args->padding_m,
-        args->limit_m, args->src_n, args->src_m, src, args->kernel_n,
-        args->kernel_m, kernel, args->dst_n, args->dst_m, dst);
+    kernel::conv2d::cpu<T>(args->offset_n, args->offset_m, args->batch,
+                           args->out_channels, args->in_channels, args->src_n,
+                           args->src_m, src, args->kernel_n, args->kernel_m,
+                           kernel, args->dst_n, args->dst_m, dst);
 #endif // STARPU_SIMGRID
 }
 
@@ -83,8 +82,7 @@ void restore_where()
 
 template <typename T>
 void submit(Index offset_n, Index offset_m, Index batch, Index out_channels,
-            Index in_channels, Index padding_n, Index limit_n, Index padding_m,
-            Index limit_m, Index src_n, Index src_m, Handle src,
+            Index in_channels, Index src_n, Index src_m, Handle src,
             Index kernel_n, Index kernel_m, Handle kernel, Index dst_n,
             Index dst_m, Handle dst)
 //! Insert conv2d task into StarPU pool of tasks
@@ -100,10 +98,6 @@ void submit(Index offset_n, Index offset_m, Index batch, Index out_channels,
     args->batch = batch;
     args->out_channels = out_channels;
     args->in_channels = in_channels;
-    args->padding_n = padding_n;
-    args->limit_n = limit_n;
-    args->padding_m = padding_m;
-    args->limit_m = limit_m;
     args->src_n = src_n;
     args->src_m = src_m;
     args->kernel_n = kernel_n;
@@ -128,22 +122,16 @@ void submit(Index offset_n, Index offset_m, Index batch, Index out_channels,
 }
 
 // Explicit instantiation
-template
-void submit<fp32_t>(Index offset_n, Index offset_m, Index batch,
-                             Index out_channels, Index in_channels,
-                             Index padding_n, Index limit_n, Index padding_m,
-                             Index limit_m, Index src_n, Index src_m,
-                             Handle src, Index kernel_n, Index kernel_m,
-                             Handle kernel, Index dst_n, Index dst_m,
-                             Handle dst);
+template void submit<fp32_t>(Index offset_n, Index offset_m, Index batch,
+                             Index out_channels, Index in_channels, Index src_n,
+                             Index src_m, Handle src, Index kernel_n,
+                             Index kernel_m, Handle kernel, Index dst_n,
+                             Index dst_m, Handle dst);
 
-template
-void submit<fp64_t>(Index offset_n, Index offset_m, Index batch,
-                             Index out_channels, Index in_channels,
-                             Index padding_n, Index limit_n, Index padding_m,
-                             Index limit_m, Index src_n, Index src_m,
-                             Handle src, Index kernel_n, Index kernel_m,
-                             Handle kernel, Index dst_n, Index dst_m,
-                             Handle dst);
+template void submit<fp64_t>(Index offset_n, Index offset_m, Index batch,
+                             Index out_channels, Index in_channels, Index src_n,
+                             Index src_m, Handle src, Index kernel_n,
+                             Index kernel_m, Handle kernel, Index dst_n,
+                             Index dst_m, Handle dst);
 
 } // namespace nntile::starpu::conv2d

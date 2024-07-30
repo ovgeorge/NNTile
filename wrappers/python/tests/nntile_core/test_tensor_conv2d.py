@@ -14,6 +14,7 @@
 import numpy as np
 import pytest
 import scipy
+import torch
 
 import nntile
 
@@ -136,21 +137,19 @@ def test_conv2d(
     C.unregister()
 
     # Check results
-    for b in range(batch):
-        for oc in range(out_channels):
-            # Get result in numpy
-            src_C[..., oc, b] = 0
-            for ic in range(in_channels):
-                termA = src_A[..., ic, b]
-                termA = np.pad(
-                    termA, ((padding[0], padding[0]), (padding[1], padding[1]))
-                )
-                termB = src_B[..., oc, ic]
-                src_C[..., oc, b] += scipy.signal.correlate(termA, termB, mode="valid")
-
-            # Check if results are almost equal
-            value = src_C[..., oc, b]
-            result = dst_C[..., oc, b]
-            diff = np.linalg.norm(result - value)
-            norm = np.linalg.norm(value)
-            assert diff <= 1e-4 * norm
+    m = torch.nn.Conv2d(
+        in_channels,
+        out_channels,
+        kernel_size=kernel.shape[:2],
+        padding=padding,
+        bias=False,
+        stride=1,
+    )
+    m.weight = torch.nn.Parameter(
+        torch.from_numpy(np.transpose(kernel, axes=[2, 3, 0, 1]))
+    )
+    result = m(torch.from_numpy(np.transpose(src, axes=[3, 2, 0, 1])))
+    value = np.transpose(src_C, axes=[3, 2, 0, 1])
+    diff = np.linalg.norm(result - value)
+    norm = np.linalg.norm(value)
+    assert diff <= 1e-4 * norm
